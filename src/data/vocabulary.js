@@ -1,5 +1,6 @@
 const article = word => /^[aeiou]/i.test(word) ? 'an' : 'a';
 const gloss = {i:'saya',my:'saya',is:'adalah',am:'adalah',are:'adalah',a:'sebuah',an:'sebuah',the:'itu',to:'ke',at:'di',by:'dengan',in:'di',on:'di',for:'untuk',and:'dan',or:'atau',you:'kamu',your:'kamu',she:'dia',he:'dia',it:'itu',we:'kami',they:'mereka',this:'ini',that:'itu',there:'di sana',has:'memiliki',have:'memiliki',lives:'tinggal',nearby:'di dekat sini',every:'setiap',day:'hari',today:'hari ini',morning:'pagi',with:'dengan',help:'bantuan',see:'melihat',can:'bisa',wearing:'memakai',like:'suka',check:'memeriksa',sit:'duduk',down:'di bawah',where:'di mana',station:'stasiun',home:'rumah',many:'banyak'};
+const definitions = { achievement:'Something difficult that you have succeeded in doing.', hello:'A friendly way of greeting someone.', kitchen:'A room where food is prepared and cooked.', bathroom:'A room with a toilet, sink, and usually a shower or bath.', bedroom:'A room where people sleep.', family:'A group of people who are related to each other.', friend:'A person you know well and like.', school:'A place where children learn.', teacher:'A person who teaches others.', doctor:'A person who treats sick or injured people.', market:'A place where people buy and sell things.', restaurant:'A place where you can buy and eat a meal.', breakfast:'The first meal of the day.', water:'The clear liquid that people drink.', flower:'The colourful part of a plant that produces seeds.', rain:'Drops of water that fall from clouds.', happy:'Feeling pleased and enjoying yourself.', tired:'Needing to rest or sleep.', travel:'To go from one place to another.', buy:'To get something by paying money for it.', cook:'To prepare food by heating it.' };
 const makeWord = (id, en, idn, emoji, theme) => {
   const key = theme.toLowerCase();
   let example = `I use ${article(en)} ${en.toLowerCase()} every day.`;
@@ -31,11 +32,11 @@ const makeWord = (id, en, idn, emoji, theme) => {
   if (contextual[id]) example = contextual[id];
   const naturalId = {hello:'Halo, nama saya Anna.',hi:'Hai, saya Budi.',goodmorning:'Selamat pagi, Anna.',goodafternoon:'Selamat siang, Pak Budi.',goodevening:'Selamat sore, semuanya.',goodbye:'Sampai jumpa, sampai besok.',please:'Silakan duduk, Anna.',thanks:'Terima kasih atas bantuanmu, Budi.',sorry:'Maaf, saya terlambat, Anna.',excuseme:'Permisi, stasiunnya di mana?',name:'Nama saya Anna.',age:'Saya berusia sepuluh tahun.',country:'Saya tinggal di Indonesia.',city:'Saya tinggal di Jakarta.',address:'Alamat saya Jalan Utama nomor 10.',phone:'Nomor telepon saya 0812-3456-7890.',email:'Email saya anna@example.com.',friend:'Dia teman saya.',meet:'Senang bertemu denganmu, Anna.',welcome:'Selamat datang di rumah kami.'};
   const translated = naturalId[id] || example.replace(en, idn);
-  const definition = `${en} is an English word for ${idn.toLowerCase()}.`;
+  const definition = definitions[id] || `A word used to talk about ${idn.toLowerCase()}.`;
   return {
   id, en, idn, emoji,
   image_url: `https://placehold.co/480x360/fff0e8/243247/png?text=${encodeURIComponent(en)}`,
-  definition, definitionId: `${en} adalah kata bahasa Inggris untuk ${idn.toLowerCase()}.`,
+  definition, definitionId: definitions[id] ? `Arti: ${idn.toLowerCase()}.` : `Kata yang digunakan untuk membicarakan ${idn.toLowerCase()}.`,
   example, translation: translated,
   breakdown: example.replace(/[.?!]/g,'').split(' ').map(token => [token, token.toLowerCase() === en.toLowerCase() ? idn.toLowerCase() : (gloss[token.toLowerCase().replace(/[,]/g,'')] || token.toLowerCase())]),
 }; };
