@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "audit:content": "node scripts/audit-content.mjs --strict",
+    "audit:content:report": "node scripts/audit-content.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",

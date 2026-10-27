@@ -11,22 +11,34 @@ const USER_KEY = 'katakita-user-v1';
 const EMPTY_PROGRESS = { learned: {}, scores: {} };
 let themes = localThemes;
 
+const sanitizeBreakdown = (value, fallback = []) => {
+  if (!Array.isArray(value)) return fallback;
+  const clean = value
+    .filter(item => Array.isArray(item) && item.length >= 2)
+    .map(([english, indonesian]) => [String(english || '').trim(), String(indonesian || '').trim()])
+    .filter(([english, indonesian]) => english && indonesian);
+  return clean.length ? clean : fallback;
+};
+
 const normalizeThemes = rows => rows?.map(row => {
   const localTheme = localThemes.find(t => t.id === row.id);
-  return { ...row, title: row.title, subtitle: row.category || row.subtitle, level: row.level_id, words: (row.vocabulary || []).map(word => {
+  return { ...localTheme, ...row, title: row.title || localTheme?.title, subtitle: row.category || localTheme?.subtitle, level: row.level_id || localTheme?.level, words: (row.vocabulary || []).filter(word => word.published !== false).map(word => {
     const en = word.english || '';
-    const localWord = localTheme?.words.find(item => item.id === word.id);
-    // Prefer the curated contextual sentence from the app when the database still has an old generic sentence.
-    const example = localWord?.example || word.example || `I use ${en.toLowerCase()} every day.`;
-    const parts = example.replace(/[.?!]/g,'').split(' ');
-    const isGreeting = /^good\s+(morning|afternoon|evening)$/i.test(en);
-    const greetingGloss = {good:'selamat',morning:'pagi',afternoon:'siang',evening:'sore'};
-    const breakdown = localWord?.breakdown || (isGreeting ? parts.map(token => { const clean = token.toLowerCase().replace(/[,]/g,''); return [token, greetingGloss[clean] || clean]; }) : word.breakdown);
-    return { ...word, en, idn: word.indonesian, example, translation: localWord?.translation || word.translation, definition: word.definition || localWord?.definition, definitionId: word.definition_id || localWord?.definitionId || `Arti bahasa Indonesia: ${word.indonesian}.`, image_url: word.image_url || localWord?.image_url || `https://placehold.co/480x360/fff0e8/243247/png?text=${encodeURIComponent(en)}`, breakdown };
+    const localWord = localTheme?.words.find(item => item.id === word.id || `${row.id}-${item.id}` === word.id);
+    // Supabase is the source of truth. Local content is only a fallback for incomplete rows.
+    const idn = word.indonesian || localWord?.idn || '';
+    const example = word.example || localWord?.example || '';
+    const translation = word.translation || localWord?.translation || '';
+    const breakdown = sanitizeBreakdown(word.breakdown, localWord?.breakdown || []);
+    return { ...localWord, ...word, id: word.id || localWord?.id, en: en || localWord?.en || '', idn, example, translation,
+      definition: word.definition || localWord?.definition || '', definitionId: word.definition_id || localWord?.definitionId || '',
+      image_url: word.image_url || localWord?.image_url || '', breakdown };
   }) };
 }) || [];
+const isUsableWord = word => Boolean(word?.id && word?.en?.trim() && word?.idn?.trim() && word?.definition?.trim() && word?.definitionId?.trim() && word?.example?.trim() && word?.translation?.trim() && Array.isArray(word?.breakdown) && word.breakdown.length);
 const themePath = theme => `/tema/${encodeURIComponent(theme.id)}`;
 const levelWordTotal = level => level.themeIds.reduce((sum, id) => sum + (themes.find(theme => theme.id === id)?.words.length || 0), 0);
+const normalizeQuizAnswer = value => String(value ?? '').trim().toLocaleLowerCase().replace(/\s+/g, ' ').replace(/[.!?]+$/g, '');
 
 const Icon = ({ name, size = 22 }) => {
   const paths = {
@@ -60,7 +72,14 @@ function App() {
   useEffect(() => {
     const onPop = () => setContentVersion(v => v + 1);
     window.addEventListener('popstate', onPop);
-    fetchVocabulary().then(rows => { const remote = normalizeThemes(rows); if (remote.length) { const remoteById = new Map(remote.map(theme => [theme.id, theme])); themes = localThemes.map(theme => remoteById.get(theme.id) || theme); setContentVersion(v => v + 1); } }).catch(() => {});
+    fetchVocabulary().then(rows => {
+      const remote = normalizeThemes(rows).filter(theme => theme.words.length);
+      if (remote.length) {
+        // Once Supabase responds, every lesson and exercise uses the same database rows.
+        themes = remote;
+        setContentVersion(v => v + 1);
+      }
+    }).catch(error => console.warn('Materi Supabase tidak dapat dimuat; memakai data lokal.', error));
     return () => window.removeEventListener('popstate', onPop);
   }, []);
   const [authOpen, setAuthOpen] = useState(false);
@@ -128,11 +147,13 @@ function App() {
   }
 
   function startQuiz(theme, type = 'choice') {
-    const questions = theme.words.map((word, index) => {
-      const others = theme.words.filter(w => w.id !== word.id).slice(0, 3);
+    const materialWords = theme.words.filter(isUsableWord);
+    const questions = materialWords.map(word => {
+      const others = materialWords.filter(w => w.id !== word.id && w.en.toLowerCase() !== word.en.toLowerCase()).sort(() => Math.random() - .5).slice(0, 3);
       const options = [word, ...others].sort(() => Math.random() - .5);
       return { word, options, type };
     });
+    if (!questions.length) return;
     setQuiz({ theme, questions, index: 0, correct: 0, answer: '', checked: false });
     setPage('quiz'); window.scrollTo(0, 0);
   }
@@ -146,8 +167,8 @@ function App() {
   function answerQuiz(value) {
     if (quiz.checked) return;
     const question = quiz.questions[quiz.index];
-    const expected = question.type === 'sentence' ? question.word.example.toLowerCase() : question.word.en.toLowerCase();
-    const isCorrect = value.trim().toLowerCase() === expected;
+    const expected = question.type === 'sentence' ? question.word.example : question.word.en;
+    const isCorrect = normalizeQuizAnswer(value) === normalizeQuizAnswer(expected);
     setQuiz(q => ({ ...q, answer: value, checked: true, wasCorrect: isCorrect }));
   }
 
@@ -279,7 +300,7 @@ function Quiz({quiz,onAnswer,onNext,onSpeak,onDone}) {
 
 function ListeningQuestion({question,disabled,onSpeak,onAnswer}) { return <div className="listening-question"><button className="listen-big" onClick={()=>onSpeak(question.word.en)}><Icon name="volume" size={26}/> Putar suara bahasa Inggris</button><p>Manakah kata yang kamu dengar?</p><div className="listen-options">{question.options.map(o=><button key={o.id} disabled={disabled} onClick={()=>onAnswer(o.en)}><span>{o.emoji}</span><b>{o.en}</b></button>)}</div></div>; }
 
-function SentenceQuestion({word,disabled,onAnswer}) { const make=()=>word.example.replace(/[.?!]/g,'').split(' ').map((text,i)=>({id:`${text}-${i}`,text})).sort(()=>Math.random()-.5); const [bank,setBank]=useState(make); const [answer,setAnswer]=useState([]); useEffect(()=>{setBank(make());setAnswer([])},[word.id]); const toAnswer=id=>{if(disabled)return;const x=bank.find(t=>t.id===id);if(x){setBank(v=>v.filter(t=>t.id!==id));setAnswer(v=>[...v,x])}};const toBank=id=>{if(disabled)return;const x=answer.find(t=>t.id===id);if(x){setAnswer(v=>v.filter(t=>t.id!==id));setBank(v=>[...v,x])}};const dragStart=(event,id,from)=>{event.dataTransfer.setData('text/plain',JSON.stringify({id,from}))};const dropWord=event=>{event.preventDefault();if(disabled)return;try{const {id,from}=JSON.parse(event.dataTransfer.getData('text/plain'));from==='bank'?toAnswer(id):toBank(id)}catch{}};return <div className="sentence-question"><div className="sentence-prompt">{word.translation}</div><p>Susun kata-kata ini menjadi kalimat bahasa Inggris. Seret kata atau ketuk untuk memindahkannya.</p><div className="answer-drop sentence-drop" onDragOver={e=>e.preventDefault()} onDrop={dropWord}>{answer.length?answer.map(t=><button draggable={!disabled} onDragStart={e=>dragStart(e,t.id,'answer')} key={t.id} onClick={()=>toBank(t.id)}>{t.text}</button>):<span>Taruh kata di sini</span>}</div><div className="letter-hint">{bank.map(t=><button draggable={!disabled} onDragStart={e=>dragStart(e,t.id,'bank')} key={t.id} onClick={()=>toAnswer(t.id)}>{t.text}</button>)}</div><button className="primary" disabled={answer.length!==word.example.replace(/[.?!]/g,'').split(' ').length||disabled} onClick={()=>onAnswer(`${answer.map(t=>t.text).join(' ')}.`)}>Periksa jawaban</button></div>; }
+function SentenceQuestion({word,disabled,onAnswer}) { const punctuation = word.example.match(/[.!?]$/)?.[0] || '.'; const make=()=>word.example.replace(/[.!?]$/,'').split(/\s+/).map((text,i)=>({id:`${i}-${text}`,text})).sort(()=>Math.random()-.5); const [bank,setBank]=useState(make); const [answer,setAnswer]=useState([]); useEffect(()=>{setBank(make());setAnswer([])},[word.id]); const toAnswer=id=>{if(disabled)return;const x=bank.find(t=>t.id===id);if(x){setBank(v=>v.filter(t=>t.id!==id));setAnswer(v=>[...v,x])}};const toBank=id=>{if(disabled)return;const x=answer.find(t=>t.id===id);if(x){setAnswer(v=>v.filter(t=>t.id!==id));setBank(v=>[...v,x])}};const dragStart=(event,id,from)=>{event.dataTransfer.setData('text/plain',JSON.stringify({id,from}))};const dropWord=event=>{event.preventDefault();if(disabled)return;try{const {id,from}=JSON.parse(event.dataTransfer.getData('text/plain'));from==='bank'?toAnswer(id):toBank(id)}catch{}};const candidate=answer.map(t=>t.text).join(' ')+punctuation;return <div className="sentence-question"><div className="sentence-prompt">{word.translation}</div><p>Susun kata-kata ini menjadi kalimat bahasa Inggris. Seret kata atau ketuk untuk memindahkannya.</p><div className="answer-drop sentence-drop" onDragOver={e=>e.preventDefault()} onDrop={dropWord}>{answer.length?answer.map(t=><button draggable={!disabled} onDragStart={e=>dragStart(e,t.id,'answer')} key={t.id} onClick={()=>toBank(t.id)}>{t.text}</button>):<span>Taruh kata di sini</span>}</div><div className="letter-hint">{bank.map(t=><button draggable={!disabled} onDragStart={e=>dragStart(e,t.id,'bank')} key={t.id} onClick={()=>toAnswer(t.id)}>{t.text}</button>)}</div><button className="primary" disabled={answer.length!==word.example.replace(/[.!?]$/,'').split(/\s+/).length||disabled} onClick={()=>onAnswer(candidate)}>Periksa jawaban</button></div>; }
 
 function LetterQuestion({word,disabled,onAnswer}) {
   const makeTiles=()=>word.toUpperCase().split('').map((letter,i)=>({id:`${letter}-${i}`,letter})).sort(()=>Math.random()-.5);
@@ -288,7 +309,7 @@ function LetterQuestion({word,disabled,onAnswer}) {
   const moveToAnswer=id=>{if(disabled)return;const tile=bank.find(t=>t.id===id);if(tile){setBank(x=>x.filter(t=>t.id!==id));setAnswer(x=>[...x,tile])}};
   const moveToBank=id=>{if(disabled)return;const tile=answer.find(t=>t.id===id);if(tile){setAnswer(x=>x.filter(t=>t.id!==id));setBank(x=>[...x,tile])}};
   const drop=(e,target)=>{e.preventDefault();const id=e.dataTransfer.getData('text/plain');target==='answer'?moveToAnswer(id):moveToBank(id)};
-  return <div className="letter-box"><p className="drag-help">Drag huruf ke kotak jawaban atau ketuk satu per satu.</p><div className="answer-drop" onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,'answer')}>{answer.length?answer.map(t=><button draggable={!disabled} onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} onClick={()=>moveToBank(t.id)} key={t.id}>{t.letter}</button>):<span>Taruh huruf di sini</span>}</div><div className="letter-hint" onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,'bank')}>{bank.map(t=><button draggable={!disabled} onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} onClick={()=>moveToAnswer(t.id)} key={t.id}>{t.letter}</button>)}</div><button className="primary" disabled={answer.length!==word.length||disabled} onClick={()=>onAnswer(answer.map(t=>t.letter).join(''))}>Periksa jawaban</button></div>;
+  return <div className="letter-box"><p className="drag-help">Susun semua huruf, termasuk spasi antarkata. Seret atau ketuk hurufnya.</p><div className="answer-drop" onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,'answer')}>{answer.length?answer.map(t=><button aria-label={t.letter===' '?'Spasi':t.letter} draggable={!disabled} onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} onClick={()=>moveToBank(t.id)} key={t.id}>{t.letter===' '?'␣':t.letter}</button>):<span>Taruh huruf di sini</span>}</div><div className="letter-hint" onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,'bank')}>{bank.map(t=><button aria-label={t.letter===' '?'Spasi':t.letter} draggable={!disabled} onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} onClick={()=>moveToAnswer(t.id)} key={t.id}>{t.letter===' '?'␣':t.letter}</button>)}</div><button className="primary" disabled={answer.length!==word.length||disabled} onClick={()=>onAnswer(answer.map(t=>t.letter).join(''))}>Periksa jawaban</button></div>;
 }
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><App/></React.StrictMode>);
