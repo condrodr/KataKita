@@ -3,7 +3,7 @@ export const levels = [
     id: 'A1', name: 'Beginner', label: 'Dasar', color: '#1687d9', soft: '#eaf5ff',
     target: 600, focus: 'Benda konkret, orang, tempat, dan kebutuhan sehari-hari.',
     outcome: 'Memahami dan menggunakan kata serta kalimat yang sangat sederhana.',
-    themeIds: ['fruit','transport','school','animals','home','body'],
+    themeIds: ['greetings','numbers','colors','shapes','fruit','transport','school','animals','home','body'],
     planned: ['Greetings & Personal Information','Numbers, Colors & Shapes','Time, Days, Months & Dates','Family, Friends & Relationships'],
   },
   {
