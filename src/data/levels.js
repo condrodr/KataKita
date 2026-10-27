@@ -31,7 +31,7 @@ export const levels = [
     id: 'C1', name: 'Advanced', label: 'Mahir', color: '#8059ad', soft: '#f2ecf8',
     target: 2500, focus: 'Bahasa akademik, profesional, kolokasi, dan konsep abstrak.',
     outcome: 'Menggunakan bahasa secara fleksibel untuk tujuan akademik dan profesional.',
-    themeIds: [],
+    themeIds: ['academic','formalwriting','globalfinance','legalinstitutions','advancedscience','philosophy','cognition','rhetoric','globalpolitics','collocations'],
     planned: ['Advanced Academic Vocabulary','Formal & Professional Writing','Economics & Global Finance','Advanced Science & Technology','Collocations, Phrasal Verbs & Idioms'],
   },
   {
