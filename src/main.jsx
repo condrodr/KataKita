@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { themes as localThemes } from './data/vocabulary';
 import { levels, totalTarget } from './data/levels';
+import { themeCatalog } from './data/catalog';
 import { fetchVocabulary } from './services/supabase';
 import './styles.css';
 
@@ -65,7 +66,6 @@ function App() {
   }
 
   function openPractice(theme) {
-    if (!user) { setAuthOpen(true); return; }
     setPracticeTheme(theme);
   }
 
@@ -150,7 +150,7 @@ function App() {
 function Brand() { return <div className="brand"><div className="brand-mark">K</div><div><strong>KataKita</strong><small>English is fun!</small></div></div>; }
 
 function Nav({ page, onNavigate, user }) {
-  const items = [['home','home','Beranda'],['levels','grid','Level'],['practice','check','Latihan'],['progress','chart','Progres'],['profile','user','Profil']];
+  const items = [['home','home','Beranda'],['levels','grid','Tema'],['practice','check','Latihan'],['progress','chart','Progres'],['profile','user','Profil']];
   return <div className="nav-list">{items.map(([id, icon, label]) => <button key={id} className={(page === id || (id === 'levels' && ['level','learn'].includes(page))) ? 'active' : ''} onClick={() => onNavigate(id)}><span className="nav-icon"><Icon name={icon}/>{id==='progress'&&!user&&<i>🔒</i>}</span><span>{label}</span></button>)}</div>;
 }
 
@@ -187,7 +187,7 @@ function ThemeCard({ theme, progress, onOpen, onPractice, user }) {
 
 function LevelCard({level,onOpen}) { return <button className="level-card" onClick={()=>onOpen(level)} style={{'--level':level.color,'--soft':level.soft}}><span className="level-code">{level.id}</span><div><b>{level.name}</b><small>{level.label} · target {level.target.toLocaleString('id-ID')} entri</small></div><Icon name="arrow"/></button>; }
 
-function Levels({onOpen,user}) { return <div className="page fade-in"><Header eyebrow="KURIKULUM A1–C2" title="Pilih Level" copy={`Enam tingkat pembelajaran dengan target total ${totalTarget.toLocaleString('id-ID')} entri kosakata.`} user={user}/><section className="curriculum-summary"><div><b>Bagaimana level ditentukan?</b><p>CEFR menggambarkan kemampuan bahasa dari A1 hingga C2. Cambridge EVP digunakan sebagai referensi untuk memeriksa level setiap makna, frasa, dan penggunaan kata. Target jumlah kata di bawah adalah sasaran kurikulum aplikasi.</p></div></section><div className="level-grid all-levels">{levels.map(level=><LevelCard key={level.id} level={level} onOpen={onOpen}/>)}</div></div>; }
+function Levels({onOpen,user}) { const available=new Map(themes.map(t=>[t.title.toLowerCase(),t])); return <div className="page fade-in"><Header eyebrow="KATALOG MATERI" title="Pilih Tema" copy="Semua materi disusun sebagai tema. Label A1–C2 hanya membantu menunjukkan tingkat rujukan." user={user}/><section className="curriculum-summary"><div><b>60 tema pembelajaran</b><p>Jelajahi tema secara langsung tanpa harus memilih level terlebih dahulu. Target di setiap kartu adalah rancangan jumlah kosakata.</p></div></section><div className="catalog-grid">{themeCatalog.map(item=>{const theme=available.get(item.title.toLowerCase()); return <article className={`catalog-card ${theme?'ready':''}`} key={item.id}><span className="level-code">{item.level}</span><div><h3>{item.title}</h3><small>Target {item.target} entri · {theme?`${theme.words.length} kata tersedia`:'Materi berikutnya'}</small></div>{theme?<button onClick={()=>onOpen(theme)}>Buka tema <Icon name="arrow" size={17}/></button>:<span className="planned-label">Segera hadir</span>}</article>})}</div></div>; }
 
 function LevelThemes({level,progress,onOpen,onPractice,user,onBack}) { const available=level.themeIds.map(id=>themes.find(t=>t.id===id)).filter(Boolean); return <div className="page fade-in"><button className="back-link" onClick={onBack}><Icon name="back" size={18}/> Semua level</button><section className="level-banner" style={{'--level':level.color,'--soft':level.soft}}><span className="level-code big">{level.id}</span><div><span className="eyebrow">{level.name.toUpperCase()}</span><h1>{level.label}</h1><p>{level.focus}</p><small>Target kurikulum: {level.target.toLocaleString('id-ID')} entri · {level.outcome}</small></div></section><section className="section-head"><div><span className="eyebrow">TEMA LEVEL {level.id}</span><h2>Pilih tema untuk dipelajari</h2></div></section>{available.length>0&&<div className="theme-grid all">{available.map(t=><ThemeCard key={t.id} theme={t} progress={progress} onOpen={onOpen} onPractice={onPractice} user={user}/>)}</div>}<div className="planned-section"><h3>{available.length?'Tema berikutnya':'Materi sedang disiapkan'}</h3><div className="planned-grid">{level.planned.map(name=><div key={name}><span>📖</span><p><b>{name}</b><small>Segera hadir · tetap gratis</small></p></div>)}</div></div></div>; }
 
