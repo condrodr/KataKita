@@ -1,6 +1,18 @@
 const article = word => /^[aeiou]/i.test(word) ? 'an' : 'a';
-const gloss = {i:'saya',my:'saya',is:'adalah',am:'adalah',are:'adalah',a:'sebuah',an:'sebuah',the:'itu',to:'ke',at:'di',by:'dengan',in:'di',on:'di',for:'untuk',and:'dan',or:'atau',you:'kamu',your:'kamu',she:'dia',he:'dia',it:'itu',we:'kami',they:'mereka',this:'ini',that:'itu',there:'di sana',has:'memiliki',have:'memiliki',lives:'tinggal',nearby:'di dekat sini',every:'setiap',day:'hari',today:'hari ini',morning:'pagi',afternoon:'siang',evening:'sore',night:'malam',with:'dengan',help:'bantuan',see:'melihat',can:'bisa',wearing:'memakai',like:'suka',check:'memeriksa',sit:'duduk',down:'di bawah',where:'di mana',station:'stasiun',home:'rumah',many:'banyak'};
+const gloss = {i:'saya',my:'saya',is:'adalah',am:'adalah',are:'adalah',a:'sebuah',an:'sebuah',the:'itu',to:'ke',at:'di',by:'dengan',in:'di',on:'di',for:'untuk',and:'dan',or:'atau',you:'kamu',your:'kamu',she:'dia',he:'dia',it:'itu',we:'kami',they:'mereka',this:'ini',that:'itu',there:'di sana',has:'memiliki',have:'memiliki',live:'tinggal',lives:'tinggal',nearby:'di dekat sini',every:'setiap',day:'hari',today:'hari ini',morning:'pagi',afternoon:'siang',evening:'sore',night:'malam',with:'dengan',help:'bantuan',see:'melihat',can:'bisa',wearing:'memakai',like:'suka',check:'memeriksa',sit:'duduk',down:'di bawah',where:'di mana',station:'stasiun',home:'rumah',many:'banyak',address:'alamat',main:'utama',street:'jalan',ten:'sepuluh',one:'satu',two:'dua',three:'tiga',four:'empat',five:'lima',six:'enam',seven:'tujuh',eight:'delapan',nine:'sembilan',years:'tahun',old:'berusia'};
 const definitions = { achievement:'Something difficult that you have succeeded in doing.', hello:'A friendly way of greeting someone.', kitchen:'A room where food is prepared and cooked.', bathroom:'A room with a toilet, sink, and usually a shower or bath.', bedroom:'A room where people sleep.', family:'A group of people who are related to each other.', friend:'A person you know well and like.', school:'A place where children learn.', teacher:'A person who teaches others.', doctor:'A person who treats sick or injured people.', market:'A place where people buy and sell things.', restaurant:'A place where you can buy and eat a meal.', breakfast:'The first meal of the day.', water:'The clear liquid that people drink.', flower:'The colourful part of a plant that produces seeds.', rain:'Drops of water that fall from clouds.', happy:'Feeling pleased and enjoying yourself.', tired:'Needing to rest or sleep.', travel:'To go from one place to another.', buy:'To get something by paying money for it.', cook:'To prepare food by heating it.' };
+const makeBreakdown = (example, en, idn) => {
+  const target = en.toLowerCase().split(/\s+/);
+  const targetIdn = idn.toLowerCase().split(/\s+/);
+  const words = example.replace(/[.?!]/g,'').split(' ');
+  if (/^excuse\s+me$/i.test(en) && words.length >= 2) return [[words[0] + ' ' + words[1], 'permisi'], ...words.slice(2).map(token => { const clean = token.toLowerCase().replace(/[,]/g,''); return [token, gloss[clean] || clean]; })];
+  return words.map(token => {
+    const clean = token.toLowerCase().replace(/[,]/g,'');
+    const targetIndex = target.indexOf(clean);
+    if (targetIndex >= 0) return [token, targetIdn[targetIndex] || idn.toLowerCase()];
+    return [token, gloss[clean] || clean];
+  });
+};
 const makeWord = (id, en, idn, emoji, theme) => {
   const key = theme.toLowerCase();
   let example = `I use ${article(en)} ${en.toLowerCase()} every day.`;
@@ -38,7 +50,7 @@ const makeWord = (id, en, idn, emoji, theme) => {
   image_url: `https://placehold.co/480x360/fff0e8/243247/png?text=${encodeURIComponent(en)}`,
   definition, definitionId: definitions[id] ? `Arti: ${idn.toLowerCase()}.` : `Kata yang digunakan untuk membicarakan ${idn.toLowerCase()}.`,
   example, translation: translated,
-  breakdown: example.replace(/[.?!]/g,'').split(' ').map(token => { const clean = token.toLowerCase().replace(/[,]/g,''); const greetingWord = /^good\s+(morning|afternoon|evening)$/i.test(en) && clean === 'good'; const meaning = clean === en.toLowerCase() ? idn.toLowerCase() : (greetingWord ? 'selamat' : (gloss[clean] || clean)); return [token, meaning]; }),
+  breakdown: makeBreakdown(example, en, idn),
 }; };
 const T = (id,title,subtitle,emoji,color,accent,rows) => ({id,title:subtitle,subtitle:title,emoji,color,accent,level:'Pemula',words:rows.map(x=>makeWord(...x,subtitle))});
 
