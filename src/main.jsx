@@ -200,7 +200,7 @@ function App() {
 function Brand() { return <button className="brand brand-button" onClick={()=>{window.history.pushState({},'', '/'); window.location.reload();}} aria-label="KataKita Beranda"><div className="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 5.5h12.5A5.5 5.5 0 0 1 25 11v15.5H12.5A5.5 5.5 0 0 0 7 32V5.5Z"/><path d="M7 5.5v20.2A5.3 5.3 0 0 1 12.3 21H25"/><path d="M13 11h7M13 15h7"/></svg></div><div><strong>KataKita</strong><small>English is fun!</small></div></button>; }
 
 function Nav({ page, onNavigate, user }) {
-  const items = [['home','home','Beranda'],['levels','grid','Tema'],['practice','check','Latihan'],['progress','chart','Progres'],['profile','user','Profil'],['about','info','Tentang']];
+  const items = [['home','home','Beranda'],['levels','grid','Tema'],['practice','check','Latihan'],['progress','chart','Progres'],['profile','user','Profil'],['about','info','Kartu Nama Pembuat']];
   return <div className="nav-list">{items.map(([id, icon, label]) => <button key={id} className={(page === id || (id === 'levels' && ['level','learn'].includes(page))) ? 'active' : ''} onClick={() => onNavigate(id)}><span className="nav-icon"><Icon name={icon}/>{id==='progress'&&!user&&<i>🔒</i>}</span><span>{label}</span></button>)}</div>;
 }
 
