@@ -11,7 +11,7 @@ const USER_KEY = 'katakita-user-v1';
 const EMPTY_PROGRESS = { learned: {}, scores: {} };
 let themes = localThemes;
 
-const normalizeThemes = rows => rows?.map(row => ({ ...row, title: row.title, subtitle: row.category || row.subtitle, level: row.level_id, words: (row.vocabulary || []).map(word => ({ ...word, en: word.english, idn: word.indonesian, image_url: word.image_url || `https://loremflickr.com/480/360/${encodeURIComponent(word.english.toLowerCase())}` })) })) || [];
+const normalizeThemes = rows => rows?.map(row => ({ ...row, title: row.title, subtitle: row.category || row.subtitle, level: row.level_id, words: (row.vocabulary || []).map(word => ({ ...word, en: word.english, idn: word.indonesian, definitionId: word.definition_id || `Arti bahasa Indonesia: ${word.indonesian}.`, image_url: word.image_url || `https://loremflickr.com/480/360/${encodeURIComponent(word.english.toLowerCase())}?lock=${encodeURIComponent(word.id)}` })) })) || [];
 
 const Icon = ({ name, size = 22 }) => {
   const paths = {
