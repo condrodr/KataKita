@@ -38,7 +38,7 @@ export const levels = [
     id: 'C2', name: 'Proficiency', label: 'Sangat mahir', color: '#9969b8', soft: '#f5eff9',
     target: 2500, focus: 'Presisi makna, nuansa, retorika, dan ungkapan idiomatis.',
     outcome: 'Memahami dan menyampaikan gagasan secara presisi, alami, dan bernuansa.',
-    themeIds: [],
+    themeIds: ['precision','sophisticated','legaldicourse','economicdiscourse','theoretical','literaryanalysis','persuasion','culturalnuance','complexidioms','precisionwriting'],
     planned: ['Precision & Semantic Differences','Sophisticated Academic Language','Literary Analysis & Figurative Expressions','Rhetoric, Persuasion & Debate','Rare Meanings & Precision Writing'],
   },
 ];
