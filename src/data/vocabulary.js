@@ -1,7 +1,7 @@
 const article = word => /^[aeiou]/i.test(word) ? 'an' : 'a';
 const makeWord = (id, en, idn, emoji, theme) => {
   const key = theme.toLowerCase();
-  let example = `This is ${article(en)} ${en.toLowerCase()}.`;
+  let example = `I use ${article(en)} ${en.toLowerCase()} every day.`;
   if (key.includes('fruit')) example = `I eat ${article(en)} ${en.toLowerCase()}.`;
   if (key.includes('transport')) example = `I travel by ${en.toLowerCase()}.`;
   if (key.includes('school')) example = `I use ${article(en)} ${en.toLowerCase()} at school.`;
@@ -10,6 +10,12 @@ const makeWord = (id, en, idn, emoji, theme) => {
   if (key.includes('body')) example = `This is my ${en.toLowerCase()}.`;
   if (key.includes('nature')) example = `The ${en.toLowerCase()} is beautiful today.`;
   if (key.includes('job')) example = `My friend is ${article(en)} ${en.toLowerCase()}.`;
+  if (key.includes('time')) example = `I check the ${en.toLowerCase()} every morning.`;
+  if (key.includes('family')) example = `My ${en.toLowerCase()} lives nearby.`;
+  if (key.includes('clothes')) example = `I am wearing ${article(en)} ${en.toLowerCase()}.`;
+  if (key.includes('food')) example = `I like ${en.toLowerCase()}.`;
+  if (key.includes('place')) example = `I am at the ${en.toLowerCase()} today.`;
+  if (key.includes('common verb')) example = `I ${en.toLowerCase()} every day.`;
   if (key.includes('greeting')) example = `${en} is a polite expression.`;
   if (key.includes('number')) example = `I can count to ${en.toLowerCase()}.`;
   if (key.includes('color')) example = `The ball is ${en.toLowerCase()}.`;
@@ -27,6 +33,7 @@ const makeWord = (id, en, idn, emoji, theme) => {
   const definition = `${en} is an English word for ${idn.toLowerCase()}.`;
   return {
   id, en, idn, emoji,
+  image_url: `https://loremflickr.com/480/360/${encodeURIComponent(en.toLowerCase())}`,
   definition, definitionId: `${en} adalah kata bahasa Inggris untuk ${idn.toLowerCase()}.`,
   example, translation: translated,
   breakdown: example.replace(/[.?!]/g,'').split(' ').map(token => [token, token.toLowerCase() === en.toLowerCase() ? idn.toLowerCase() : token]),
