@@ -17,7 +17,7 @@ export const levels = [
     id: 'B1', name: 'Intermediate', label: 'Mandiri', color: '#249663', soft: '#eaf8f1',
     target: 1500, focus: 'Pengalaman, pendidikan, pekerjaan, lingkungan, dan opini.',
     outcome: 'Menyampaikan pengalaman, alasan, dan gagasan dengan cukup mandiri.',
-    themeIds: [],
+    themeIds: ['experiences','education','worklife','travelculture','lifestyle','environment','media','society','emotions','opinions'],
     planned: ['Personal Experiences & Life Events','Education & Learning','Work & Professional Life','Environment & Sustainability','Media & Social Networks'],
   },
   {
