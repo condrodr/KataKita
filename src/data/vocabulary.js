@@ -1,12 +1,27 @@
-const makeWord = (id, en, idn, emoji) => ({
+const article = word => /^[aeiou]/i.test(word) ? 'an' : 'a';
+const makeWord = (id, en, idn, emoji, theme) => {
+  const key = theme.toLowerCase();
+  let example = `This is ${article(en)} ${en.toLowerCase()}.`;
+  if (key.includes('fruit')) example = `I eat ${article(en)} ${en.toLowerCase()}.`;
+  if (key.includes('transport')) example = `I travel by ${en.toLowerCase()}.`;
+  if (key.includes('school')) example = `I use ${article(en)} ${en.toLowerCase()} at school.`;
+  if (key.includes('animal')) example = `I can see ${article(en)} ${en.toLowerCase()}.`;
+  if (key.includes('home')) example = `There is ${article(en)} ${en.toLowerCase()} at home.`;
+  if (key.includes('body')) example = `This is my ${en.toLowerCase()}.`;
+  if (key.includes('nature')) example = `The ${en.toLowerCase()} is beautiful today.`;
+  if (key.includes('job')) example = `My friend is ${article(en)} ${en.toLowerCase()}.`;
+  if (key.includes('greeting')) example = `${en} is a polite expression.`;
+  if (key.includes('number')) example = `I can count to ${en.toLowerCase()}.`;
+  if (key.includes('color')) example = `The ball is ${en.toLowerCase()}.`;
+  if (key.includes('shape')) example = `The sign has a ${en.toLowerCase()} shape.`;
+  const definition = `${en} is an English word for ${idn.toLowerCase()}.`;
+  return {
   id, en, idn, emoji,
-  definition: `The English word used for “${idn.toLowerCase()}”.`,
-  definitionId: `Kata bahasa Inggris yang digunakan untuk “${idn.toLowerCase()}”.`,
-  example: `Look at the ${en.toLowerCase()}.`,
-  translation: `Lihatlah ${idn.toLowerCase()} itu.`,
-  breakdown: [['Look', 'Lihatlah'], ['at', 'pada'], ['the', 'itu'], [en.toLowerCase(), idn.toLowerCase()]],
-});
-const T = (id,title,subtitle,emoji,color,accent,rows) => ({id,title,subtitle,emoji,color,accent,level:'Pemula',words:rows.map(x=>makeWord(...x))});
+  definition, definitionId: `${en} adalah kata bahasa Inggris untuk ${idn.toLowerCase()}.`,
+  example, translation: example.replace(en, idn),
+  breakdown: example.replace(/[.?!]/g,'').split(' ').map(token => [token, token.toLowerCase() === en.toLowerCase() ? idn.toLowerCase() : token]),
+}; };
+const T = (id,title,subtitle,emoji,color,accent,rows) => ({id,title,subtitle,emoji,color,accent,level:'Pemula',words:rows.map(x=>makeWord(...x,title))});
 
 export const themes = [
 T('fruit','Buah-buahan','Fruits','🍊','#fff0e8','#f97316',[
