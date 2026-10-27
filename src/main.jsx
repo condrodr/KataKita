@@ -11,7 +11,20 @@ const USER_KEY = 'katakita-user-v1';
 const EMPTY_PROGRESS = { learned: {}, scores: {} };
 let themes = localThemes;
 
-const normalizeThemes = rows => rows?.map(row => ({ ...row, title: row.title, subtitle: row.category || row.subtitle, level: row.level_id, words: (row.vocabulary || []).map(word => { const en = word.english || ''; const parts = String(word.example || '').replace(/[.?!]/g,'').split(' '); const isGreeting = /^good\s+(morning|afternoon|evening)$/i.test(en); const greetingGloss = {good:'selamat',morning:'pagi',afternoon:'siang',evening:'sore'}; const breakdown = isGreeting ? parts.map(token => { const clean = token.toLowerCase().replace(/[,]/g,''); return [token, greetingGloss[clean] || clean]; }) : word.breakdown; return { ...word, en, idn: word.indonesian, definitionId: word.definition_id || `Arti bahasa Indonesia: ${word.indonesian}.`, image_url: word.image_url || `https://placehold.co/480x360/fff0e8/243247/png?text=${encodeURIComponent(en)}`, breakdown }; }) })) || [];
+const normalizeThemes = rows => rows?.map(row => {
+  const localTheme = localThemes.find(t => t.id === row.id);
+  return { ...row, title: row.title, subtitle: row.category || row.subtitle, level: row.level_id, words: (row.vocabulary || []).map(word => {
+    const en = word.english || '';
+    const localWord = localTheme?.words.find(item => item.id === word.id);
+    // Prefer the curated contextual sentence from the app when the database still has an old generic sentence.
+    const example = localWord?.example || word.example || `I use ${en.toLowerCase()} every day.`;
+    const parts = example.replace(/[.?!]/g,'').split(' ');
+    const isGreeting = /^good\s+(morning|afternoon|evening)$/i.test(en);
+    const greetingGloss = {good:'selamat',morning:'pagi',afternoon:'siang',evening:'sore'};
+    const breakdown = localWord?.breakdown || (isGreeting ? parts.map(token => { const clean = token.toLowerCase().replace(/[,]/g,''); return [token, greetingGloss[clean] || clean]; }) : word.breakdown);
+    return { ...word, en, idn: word.indonesian, example, translation: localWord?.translation || word.translation, definition: word.definition || localWord?.definition, definitionId: word.definition_id || localWord?.definitionId || `Arti bahasa Indonesia: ${word.indonesian}.`, image_url: word.image_url || localWord?.image_url || `https://placehold.co/480x360/fff0e8/243247/png?text=${encodeURIComponent(en)}`, breakdown };
+  }) };
+}) || [];
 const themePath = theme => `/tema/${encodeURIComponent(theme.id)}`;
 
 const Icon = ({ name, size = 22 }) => {
