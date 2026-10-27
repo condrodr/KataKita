@@ -1,4 +1,5 @@
 const article = word => /^[aeiou]/i.test(word) ? 'an' : 'a';
+const gloss = {i:'saya',my:'saya',is:'adalah',am:'adalah',are:'adalah',a:'sebuah',an:'sebuah',the:'itu',to:'ke',at:'di',by:'dengan',in:'di',on:'di',for:'untuk',and:'dan',or:'atau',you:'kamu',your:'kamu',she:'dia',he:'dia',it:'itu',we:'kami',they:'mereka',this:'ini',that:'itu',there:'di sana',has:'memiliki',have:'memiliki',lives:'tinggal',nearby:'di dekat sini',every:'setiap',day:'hari',today:'hari ini',morning:'pagi',with:'dengan',help:'bantuan',see:'melihat',can:'bisa',wearing:'memakai',like:'suka',check:'memeriksa',sit:'duduk',down:'di bawah',where:'di mana',station:'stasiun',home:'rumah',many:'banyak'};
 const makeWord = (id, en, idn, emoji, theme) => {
   const key = theme.toLowerCase();
   let example = `I use ${article(en)} ${en.toLowerCase()} every day.`;
@@ -33,10 +34,10 @@ const makeWord = (id, en, idn, emoji, theme) => {
   const definition = `${en} is an English word for ${idn.toLowerCase()}.`;
   return {
   id, en, idn, emoji,
-  image_url: `https://loremflickr.com/480/360/${encodeURIComponent(en.toLowerCase())}`,
+  image_url: `https://placehold.co/480x360/fff0e8/243247/png?text=${encodeURIComponent(en)}`,
   definition, definitionId: `${en} adalah kata bahasa Inggris untuk ${idn.toLowerCase()}.`,
   example, translation: translated,
-  breakdown: example.replace(/[.?!]/g,'').split(' ').map(token => [token, token.toLowerCase() === en.toLowerCase() ? idn.toLowerCase() : token]),
+  breakdown: example.replace(/[.?!]/g,'').split(' ').map(token => [token, token.toLowerCase() === en.toLowerCase() ? idn.toLowerCase() : (gloss[token.toLowerCase().replace(/[,]/g,'')] || token.toLowerCase())]),
 }; };
 const T = (id,title,subtitle,emoji,color,accent,rows) => ({id,title:subtitle,subtitle:title,emoji,color,accent,level:'Pemula',words:rows.map(x=>makeWord(...x,subtitle))});
 
