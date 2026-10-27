@@ -65,6 +65,7 @@ function App() {
   const [, setContentVersion] = useState(0);
   const [page, setPage] = useState('home');
   const [progress, setProgress] = useState(loadProgress);
+  const [guestProgress, setGuestProgress] = useState(EMPTY_PROGRESS);
   const [activeTheme, setActiveTheme] = useState(null);
   const [wordIndex, setWordIndex] = useState(0);
   const [quiz, setQuiz] = useState(null);
@@ -110,7 +111,8 @@ function App() {
   useEffect(() => { if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); }, [progress, user]);
   useEffect(() => user ? localStorage.setItem(USER_KEY, JSON.stringify(user)) : localStorage.removeItem(USER_KEY), [user]);
 
-  const effectiveProgress = user ? progress : EMPTY_PROGRESS;
+  // Guests can see checks and scores during this browser session; only signed-in progress is persisted.
+  const effectiveProgress = user ? progress : guestProgress;
   const stats = useMemo(() => {
     const learned = Object.values(effectiveProgress.learned).reduce((sum, words) => sum + words.length, 0);
     const completed = themes.filter(t => effectiveProgress.learned[t.id]?.length === t.words.length).length;
@@ -130,12 +132,12 @@ function App() {
   }
 
   function markLearned(theme, word) {
-    if (!user) return;
-    setProgress(prev => {
+    const update = prev => {
       const current = prev.learned[theme.id] || [];
       if (current.includes(word.id)) return prev;
       return { ...prev, learned: { ...prev.learned, [theme.id]: [...current, word.id] } };
-    });
+    };
+    (user ? setProgress : setGuestProgress)(update);
   }
 
   function speak(text) {
@@ -160,7 +162,8 @@ function App() {
 
   function finishQuiz(correct) {
     const score = Math.round((correct / quiz.questions.length) * 100);
-    setProgress(prev => ({ ...prev, scores: { ...prev.scores, [quiz.theme.id]: Math.max(score, prev.scores[quiz.theme.id] || 0) } }));
+    const saveScore = prev => ({ ...prev, scores: { ...prev.scores, [quiz.theme.id]: Math.max(score, prev.scores[quiz.theme.id] || 0) } });
+    (user ? setProgress : setGuestProgress)(saveScore);
     setQuiz(q => ({ ...q, finished: true, finalScore: score, correct }));
   }
 
