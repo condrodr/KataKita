@@ -11,7 +11,7 @@ const USER_KEY = 'katakita-user-v1';
 const EMPTY_PROGRESS = { learned: {}, scores: {} };
 let themes = localThemes;
 
-const normalizeThemes = rows => rows?.map(row => ({ ...row, level: row.level_id, words: (row.vocabulary || []).map(word => ({ ...word, en: word.english, idn: word.indonesian })) })) || [];
+const normalizeThemes = rows => rows?.map(row => ({ ...row, title: row.category || row.title, subtitle: row.title || row.category, level: row.level_id, words: (row.vocabulary || []).map(word => ({ ...word, en: word.english, idn: word.indonesian })) })) || [];
 
 const Icon = ({ name, size = 22 }) => {
   const paths = {

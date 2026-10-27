@@ -31,7 +31,7 @@ const makeWord = (id, en, idn, emoji, theme) => {
   example, translation: translated,
   breakdown: example.replace(/[.?!]/g,'').split(' ').map(token => [token, token.toLowerCase() === en.toLowerCase() ? idn.toLowerCase() : token]),
 }; };
-const T = (id,title,subtitle,emoji,color,accent,rows) => ({id,title,subtitle,emoji,color,accent,level:'Pemula',words:rows.map(x=>makeWord(...x,title))});
+const T = (id,title,subtitle,emoji,color,accent,rows) => ({id,title:subtitle,subtitle:title,emoji,color,accent,level:'Pemula',words:rows.map(x=>makeWord(...x,title))});
 
 export const themes = [
 T('fruit','Buah-buahan','Fruits','🍊','#fff0e8','#f97316',[
