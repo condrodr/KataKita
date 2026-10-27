@@ -24,7 +24,7 @@ export const levels = [
     id: 'B2', name: 'Upper Intermediate', label: 'Mandiri lanjut', color: '#1f9e8f', soft: '#e7f8f6',
     target: 2000, focus: 'Diskusi, argumen, isu sosial, dan bahasa profesional.',
     outcome: 'Memahami informasi kompleks dan menjelaskan pendapat secara sistematis.',
-    themeIds: [],
+    themeIds: ['business','economics','science','digital','politics','law','psychology','culturearts','socialissues','argumentation'],
     planned: ['Business & Entrepreneurship','Science, Research & Discoveries','Technology & Digital Society','Culture, Literature & Arts','Social Issues & Ethics'],
   },
   {
