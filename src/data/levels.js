@@ -10,7 +10,7 @@ export const levels = [
     id: 'A2', name: 'Elementary', label: 'Dasar lanjut', color: '#3977be', soft: '#edf5ff',
     target: 900, focus: 'Rutinitas, perjalanan, pekerjaan, cuaca, dan interaksi sosial.',
     outcome: 'Menjelaskan kebiasaan dan menangani percakapan singkat sehari-hari.',
-    themeIds: ['nature','jobs'],
+    themeIds: ['routines','shopping','directions','seasons','sports','travel','cooking','health','technology','people'],
     planned: ['Daily Routines','Shopping, Money & Payments','Travel, Hotels & Holidays','Restaurants, Cooking & Food'],
   },
   {
