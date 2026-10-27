@@ -20,6 +20,7 @@ const Icon = ({ name, size = 22 }) => {
     grid: <><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></>,
     chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
     user: <><circle cx="12" cy="8" r="4"/><path d="M4 21c.7-4 3.4-6 8-6s7.3 2 8 6"/></>,
+    info: <><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></>,
     volume: <><path d="M5 10H2v4h3l5 4V6l-5 4Z"/><path d="M14 9c1.6 1.6 1.6 4.4 0 6M17 6c3.3 3.3 3.3 8.7 0 12"/></>,
     arrow: <><path d="m9 18 6-6-6-6"/></>,
     back: <><path d="m15 18-6-6 6-6"/></>,
@@ -69,6 +70,7 @@ function App() {
     if (path === '/latihan') { setPage('practice'); return; }
     if (path === '/progres') { setPage(user ? 'progress' : 'home'); return; }
     if (path === '/profil') { setPage('profile'); return; }
+    if (path === '/tentang') { setPage('about'); return; }
     setPage('home');
   }, []);
 
@@ -143,7 +145,7 @@ function App() {
 
   const navigate = target => {
     if (target === 'progress' && !user) { setAuthOpen(true); return; }
-    const paths = { home: '/', levels: '/kurikulum', practice: '/latihan', progress: '/progres', profile: '/profil' };
+    const paths = { home: '/', levels: '/kurikulum', practice: '/latihan', progress: '/progres', profile: '/profil', about: '/tentang' };
     setPage(target); setActiveTheme(null); window.history.pushState({}, '', paths[target] || '/'); window.scrollTo(0, 0);
   };
 
@@ -168,6 +170,7 @@ function App() {
       {page === 'practice' && <PracticeHub progress={effectiveProgress} onPractice={openPractice} user={user} onOpenLevel={openLevel} />}
       {page === 'progress' && user && <Progress stats={stats} progress={effectiveProgress} onOpen={openTheme} user={user} />}
       {page === 'profile' && <Profile user={user} onAuth={()=>setAuthOpen(true)} onLogout={()=>{setUser(null);navigate('home')}} />}
+      {page === 'about' && <About />}
       {page === 'learn' && activeTheme && <Learn theme={activeTheme} index={wordIndex} progress={effectiveProgress} onBack={() => returnToThemeList(activeTheme)} onSpeak={speak} onSelect={setWordIndex} onNext={() => {
         markLearned(activeTheme, activeTheme.words[wordIndex]);
         if (wordIndex < activeTheme.words.length - 1) setWordIndex(i => i + 1); else setFinishOpen(true);
@@ -181,10 +184,10 @@ function App() {
   </div>;
 }
 
-function Brand() { return <div className="brand"><div className="brand-mark">K</div><div><strong>KataKita</strong><small>English is fun!</small></div></div>; }
+function Brand() { return <button className="brand brand-button" onClick={()=>{window.history.pushState({},'', '/'); window.location.reload();}} aria-label="KataKita Beranda"><div className="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 5.5h12.5A5.5 5.5 0 0 1 25 11v15.5H12.5A5.5 5.5 0 0 0 7 32V5.5Z"/><path d="M7 5.5v20.2A5.3 5.3 0 0 1 12.3 21H25"/><path d="M13 11h7M13 15h7"/></svg></div><div><strong>KataKita</strong><small>English is fun!</small></div></button>; }
 
 function Nav({ page, onNavigate, user }) {
-  const items = [['home','home','Beranda'],['levels','grid','Tema'],['practice','check','Latihan'],['progress','chart','Progres'],['profile','user','Profil']];
+  const items = [['home','home','Beranda'],['levels','grid','Tema'],['practice','check','Latihan'],['progress','chart','Progres'],['profile','user','Profil'],['about','info','Tentang']];
   return <div className="nav-list">{items.map(([id, icon, label]) => <button key={id} className={(page === id || (id === 'levels' && ['level','learn'].includes(page))) ? 'active' : ''} onClick={() => onNavigate(id)}><span className="nav-icon"><Icon name={icon}/>{id==='progress'&&!user&&<i>🔒</i>}</span><span>{label}</span></button>)}</div>;
 }
 
@@ -230,6 +233,8 @@ function PracticeHub({progress,onPractice,user}) { return <div className="page f
 function Progress({stats,progress,onOpen,user}) { return <div className="page fade-in"><Header eyebrow="PERJALANANMU" title={`Progres ${user.name}`} copy="Setiap kata baru adalah satu langkah maju." user={user}/><section className="progress-banner"><div className="ring" style={{'--pct': `${Math.round(stats.learned/stats.total*100)}%`}}><span>{Math.round(stats.learned/stats.total*100)}%</span></div><div><h2>Hebat, teruskan!</h2><p>Kamu sudah mempelajari <b>{stats.learned} dari {stats.total} kata</b>.</p></div></section><div className="progress-list">{themes.map(t=>{const n=progress.learned[t.id]?.length||0;return <button key={t.id} onClick={()=>onOpen(t)}><span className="list-emoji" style={{background:t.color}}>{t.emoji}</span><div><b>{t.title}</b><small>{n}/{t.words.length} kata · Nilai terbaik {progress.scores[t.id]||0}</small><div className="bar dark"><i style={{width:`${n/t.words.length*100}%`,background:t.accent}}/></div></div><Icon name="arrow"/></button>})}</div></div>; }
 
 function Profile({user,onAuth,onLogout}) { return <div className="page fade-in"><Header eyebrow="AKUN SAYA" title={user?'Profil Belajar':'Masuk ke KataKita'} copy={user?'Kelola identitas dan perjalanan belajarmu.':'Masuk untuk menyimpan progres dan nilai latihan.'} user={user}/><section className="profile-card"><div className="big-avatar">{user?.name?.[0]?.toUpperCase()||'?'}</div><h2>{user?.name||'Belum masuk'}</h2><p>{user?.email||'Mode pengunjung'}</p><div className="notice"><span>{user?'✅':'☁️'}</span><div><b>{user?'Progres belajar aktif':'Latihan mode pengunjung'}</b><p>{user?'Progres dan nilai latihan kini tersimpan di akunmu.':'Latihan tetap gratis tanpa login. Daftar hanya jika ingin menyimpan progres dan nilai.'}</p></div></div>{user?<button className="secondary full" onClick={onLogout}>Keluar dari akun</button>:<button className="primary full" onClick={onAuth}>Masuk atau daftar</button>}</section></div>; }
+
+function About() { return <div className="page fade-in"><Header eyebrow="TENTANG KATAKITA" title="Belajar bersama pembuatnya" copy="KataKita adalah ruang belajar kosakata bahasa Inggris yang sederhana, gratis, dan dibuat untuk belajar sedikit demi sedikit."/><section className="about-card"><div className="about-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 5.5h12.5A5.5 5.5 0 0 1 25 11v15.5H12.5A5.5 5.5 0 0 0 7 32V5.5Z"/><path d="M7 5.5v20.2A5.3 5.3 0 0 1 12.3 21H25"/><path d="M13 11h7M13 15h7"/></svg></div><span className="eyebrow">PEMBUAT KATAKITA</span><h2>Condro Dwi Prasetyo</h2><p>Temukan profil, karya, dan informasi tentang pembuat aplikasi ini.</p><div className="about-links"><a href="https://github.com/condrodr/KataKita" target="_blank" rel="noreferrer">GitHub proyek KataKita <Icon name="arrow" size={18}/></a><a href="https://dcondro.carrd.co/" target="_blank" rel="noreferrer">Kartu profil / kartu nama <Icon name="arrow" size={18}/></a></div></section></div>; }
 
 function Learn({theme,index,progress,onBack,onSpeak,onNext,onSelect}) {
   const word=theme.words[index]; const learned=progress.learned[theme.id]?.includes(word.id);
