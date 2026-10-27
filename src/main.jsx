@@ -12,6 +12,7 @@ const EMPTY_PROGRESS = { learned: {}, scores: {} };
 let themes = localThemes;
 
 const normalizeThemes = rows => rows?.map(row => ({ ...row, title: row.title, subtitle: row.category || row.subtitle, level: row.level_id, words: (row.vocabulary || []).map(word => ({ ...word, en: word.english, idn: word.indonesian, definitionId: word.definition_id || `Arti bahasa Indonesia: ${word.indonesian}.`, image_url: word.image_url || `https://placehold.co/480x360/fff0e8/243247/png?text=${encodeURIComponent(word.english)}` })) })) || [];
+const themePath = theme => `/tema/${encodeURIComponent(theme.id)}`;
 
 const Icon = ({ name, size = 22 }) => {
   const paths = {
@@ -41,11 +42,35 @@ function App() {
   const [wordIndex, setWordIndex] = useState(0);
   const [quiz, setQuiz] = useState(null);
   const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch { return null; } });
-  useEffect(() => { fetchVocabulary().then(rows => { const remote = normalizeThemes(rows); if (remote.length) { themes = remote; setContentVersion(v => v + 1); } }).catch(() => {}); }, []);
+  useEffect(() => {
+    const onPop = () => setContentVersion(v => v + 1);
+    window.addEventListener('popstate', onPop);
+    fetchVocabulary().then(rows => { const remote = normalizeThemes(rows); if (remote.length) { themes = remote; setContentVersion(v => v + 1); } }).catch(() => {});
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   const [authOpen, setAuthOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [practiceTheme, setPracticeTheme] = useState(null);
   const [selectedLevel, setSelectedLevel] = useState(levels[0]);
+
+  // Keep the current screen addressable, so refresh/back/deep links work.
+  useEffect(() => {
+    const path = window.location.pathname.replace(/\/$/, '') || '/';
+    const parts = path.split('/').filter(Boolean);
+    if (parts[0] === 'tema' && parts[1]) {
+      const found = themes.find(t => t.id === decodeURIComponent(parts[1]));
+      if (found) { setActiveTheme(found); setWordIndex(0); setPage('learn'); return; }
+    }
+    if (parts[0] === 'level' && parts[1]) {
+      const found = levels.find(l => l.id.toLowerCase() === decodeURIComponent(parts[1]).toLowerCase());
+      if (found) { setSelectedLevel(found); setPage('level'); return; }
+    }
+    if (path === '/kurikulum') { setPage('levels'); return; }
+    if (path === '/latihan') { setPage('practice'); return; }
+    if (path === '/progres') { setPage(user ? 'progress' : 'home'); return; }
+    if (path === '/profil') { setPage('profile'); return; }
+    setPage('home');
+  }, []);
 
   useEffect(() => { if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); }, [progress, user]);
   useEffect(() => user ? localStorage.setItem(USER_KEY, JSON.stringify(user)) : localStorage.removeItem(USER_KEY), [user]);
@@ -58,11 +83,11 @@ function App() {
   }, [effectiveProgress]);
 
   function openTheme(theme) {
-    setActiveTheme(theme); setWordIndex(0); setPage('learn'); window.scrollTo(0, 0);
+    setActiveTheme(theme); setWordIndex(0); setPage('learn'); window.history.pushState({}, '', themePath(theme)); window.scrollTo(0, 0);
   }
 
   function openLevel(level) {
-    setSelectedLevel(level); setPage('level'); window.scrollTo(0, 0);
+    setSelectedLevel(level); setPage('level'); window.history.pushState({}, '', `/level/${encodeURIComponent(level.id)}`); window.scrollTo(0, 0);
   }
 
   function openPractice(theme) {
@@ -118,8 +143,17 @@ function App() {
 
   const navigate = target => {
     if (target === 'progress' && !user) { setAuthOpen(true); return; }
-    setPage(target); setActiveTheme(null); window.scrollTo(0, 0);
+    const paths = { home: '/', levels: '/kurikulum', practice: '/latihan', progress: '/progres', profile: '/profil' };
+    setPage(target); setActiveTheme(null); window.history.pushState({}, '', paths[target] || '/'); window.scrollTo(0, 0);
   };
+
+  function returnToThemeList(theme = activeTheme) {
+    setFinishOpen(false); setActiveTheme(null);
+    const level = theme && levels.find(l => l.themeIds.includes(theme.id));
+    if (level) { setSelectedLevel(level); setPage('level'); window.history.pushState({}, '', `/level/${encodeURIComponent(level.id)}`); }
+    else { setPage('levels'); window.history.pushState({}, '', '/kurikulum'); }
+    window.scrollTo(0, 0);
+  }
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -129,12 +163,12 @@ function App() {
     </aside>
     <main className="main">
       {page === 'home' && <Home stats={stats} progress={effectiveProgress} onOpenLevel={openLevel} onNavigate={navigate} user={user} onAuth={()=>setAuthOpen(true)} />}
-      {page === 'levels' && <Levels onOpen={openLevel} user={user} />}
+      {page === 'levels' && <Levels onOpen={openTheme} user={user} />}
       {page === 'level' && <LevelThemes level={selectedLevel} progress={effectiveProgress} onOpen={openTheme} onPractice={openPractice} user={user} onBack={()=>navigate('levels')} />}
       {page === 'practice' && <PracticeHub progress={effectiveProgress} onPractice={openPractice} user={user} onOpenLevel={openLevel} />}
       {page === 'progress' && user && <Progress stats={stats} progress={effectiveProgress} onOpen={openTheme} user={user} />}
       {page === 'profile' && <Profile user={user} onAuth={()=>setAuthOpen(true)} onLogout={()=>{setUser(null);navigate('home')}} />}
-      {page === 'learn' && activeTheme && <Learn theme={activeTheme} index={wordIndex} progress={effectiveProgress} onBack={() => {setPage('level');setActiveTheme(null)}} onSpeak={speak} onSelect={setWordIndex} onNext={() => {
+      {page === 'learn' && activeTheme && <Learn theme={activeTheme} index={wordIndex} progress={effectiveProgress} onBack={() => returnToThemeList(activeTheme)} onSpeak={speak} onSelect={setWordIndex} onNext={() => {
         markLearned(activeTheme, activeTheme.words[wordIndex]);
         if (wordIndex < activeTheme.words.length - 1) setWordIndex(i => i + 1); else setFinishOpen(true);
       }} />}
@@ -142,7 +176,7 @@ function App() {
     </main>
     <nav className="bottom-nav"><Nav page={page} onNavigate={navigate} user={user} /></nav>
     {authOpen && <AuthModal onClose={()=>setAuthOpen(false)} onSuccess={newUser=>{setUser(newUser);setAuthOpen(false)}} />}
-    {finishOpen && <FinishModal user={user} theme={activeTheme} onClose={()=>setFinishOpen(false)} onAuth={()=>{setFinishOpen(false);setAuthOpen(true)}} onQuiz={type=>{setFinishOpen(false);startQuiz(activeTheme,type)}} />}
+    {finishOpen && <FinishModal user={user} theme={activeTheme} onClose={()=>returnToThemeList(activeTheme)} onAuth={()=>{setFinishOpen(false);setAuthOpen(true)}} onQuiz={type=>{setFinishOpen(false);startQuiz(activeTheme,type)}} />}
     {practiceTheme && <PracticeModal theme={practiceTheme} onClose={()=>setPracticeTheme(null)} onStart={type=>{const selected=practiceTheme;setPracticeTheme(null);startQuiz(selected,type)}} />}
   </div>;
 }
