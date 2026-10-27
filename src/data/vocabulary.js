@@ -14,11 +14,17 @@ const makeWord = (id, en, idn, emoji, theme) => {
   if (key.includes('number')) example = `I can count to ${en.toLowerCase()}.`;
   if (key.includes('color')) example = `The ball is ${en.toLowerCase()}.`;
   if (key.includes('shape')) example = `The sign has a ${en.toLowerCase()} shape.`;
+  const natural = {
+    hello: 'Hello!', hi: 'Hi!', goodmorning: 'Good morning!', goodafternoon: 'Good afternoon!', goodevening: 'Good evening!', goodbye: 'Goodbye!', please: 'Please sit down.', thanks: 'Thanks for your help.', sorry: 'Sorry, I am late.', excuseme: 'Excuse me, where is the station?', name: 'My name is Anna.', age: 'I am ten years old.', country: 'I live in Indonesia.', city: 'I live in Jakarta.', address: 'My address is 10 Main Street.', phone: 'My phone number is 0812-3456-7890.', email: 'My email is anna@example.com.', friend: 'She is my friend.', meet: 'Nice to meet you.', welcome: 'Welcome to our home.'
+  };
+  if (key.includes('greeting') && natural[id]) example = natural[id];
+  const naturalId = {hello:'Halo!',hi:'Hai!',goodmorning:'Selamat pagi!',goodafternoon:'Selamat siang!',goodevening:'Selamat sore!',goodbye:'Sampai jumpa!',please:'Silakan duduk.',thanks:'Terima kasih atas bantuanmu.',sorry:'Maaf, saya terlambat.',excuseme:'Permisi, stasiunnya di mana?',name:'Nama saya Anna.',age:'Saya berusia sepuluh tahun.',country:'Saya tinggal di Indonesia.',city:'Saya tinggal di Jakarta.',address:'Alamat saya Jalan Utama nomor 10.',phone:'Nomor telepon saya 0812-3456-7890.',email:'Email saya anna@example.com.',friend:'Dia teman saya.',meet:'Senang bertemu denganmu.',welcome:'Selamat datang di rumah kami.'};
+  const translated = naturalId[id] || example.replace(en, idn);
   const definition = `${en} is an English word for ${idn.toLowerCase()}.`;
   return {
   id, en, idn, emoji,
   definition, definitionId: `${en} adalah kata bahasa Inggris untuk ${idn.toLowerCase()}.`,
-  example, translation: example.replace(en, idn),
+  example, translation: translated,
   breakdown: example.replace(/[.?!]/g,'').split(' ').map(token => [token, token.toLowerCase() === en.toLowerCase() ? idn.toLowerCase() : token]),
 }; };
 const T = (id,title,subtitle,emoji,color,accent,rows) => ({id,title,subtitle,emoji,color,accent,level:'Pemula',words:rows.map(x=>makeWord(...x,title))});
