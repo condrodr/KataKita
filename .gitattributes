@@ -1,0 +1,6 @@
+# Keep source and data files consistent across Windows, Vercel, and Linux
+* text=auto eol=lf
+
+# Windows command files require CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { themes as localThemes } from './data/vocabulary';
 import { levels, totalTarget } from './data/levels';
 import { themeCatalog } from './data/catalog';
-import { fetchVocabulary } from './services/supabase';
+import { fetchVocabulary, getCurrentUser, signIn, signOut, signUp, saveVocabulary, removeVocabulary } from './services/supabase';
 import './styles.css';
 
 const STORAGE_KEY = 'katakita-progress-v1';
@@ -11,22 +11,34 @@ const USER_KEY = 'katakita-user-v1';
 const EMPTY_PROGRESS = { learned: {}, scores: {} };
 let themes = localThemes;
 
+const sanitizeBreakdown = (value, fallback = []) => {
+  if (!Array.isArray(value)) return fallback;
+  const clean = value
+    .filter(item => Array.isArray(item) && item.length >= 2)
+    .map(([english, indonesian]) => [String(english || '').trim(), String(indonesian || '').trim()])
+    .filter(([english, indonesian]) => english && indonesian);
+  return clean.length ? clean : fallback;
+};
+
 const normalizeThemes = rows => rows?.map(row => {
   const localTheme = localThemes.find(t => t.id === row.id);
-  return { ...row, title: row.title, subtitle: row.category || row.subtitle, level: row.level_id, words: (row.vocabulary || []).map(word => {
+  return { ...localTheme, ...row, title: row.title || localTheme?.title, subtitle: row.category || localTheme?.subtitle, level: row.level_id || localTheme?.level, words: (row.vocabulary || []).filter(word => word.published !== false).map(word => {
     const en = word.english || '';
-    const localWord = localTheme?.words.find(item => item.id === word.id);
-    // Prefer the curated contextual sentence from the app when the database still has an old generic sentence.
-    const example = localWord?.example || word.example || `I use ${en.toLowerCase()} every day.`;
-    const parts = example.replace(/[.?!]/g,'').split(' ');
-    const isGreeting = /^good\s+(morning|afternoon|evening)$/i.test(en);
-    const greetingGloss = {good:'selamat',morning:'pagi',afternoon:'siang',evening:'sore'};
-    const breakdown = localWord?.breakdown || (isGreeting ? parts.map(token => { const clean = token.toLowerCase().replace(/[,]/g,''); return [token, greetingGloss[clean] || clean]; }) : word.breakdown);
-    return { ...word, en, idn: word.indonesian, example, translation: localWord?.translation || word.translation, definition: word.definition || localWord?.definition, definitionId: word.definition_id || localWord?.definitionId || `Arti bahasa Indonesia: ${word.indonesian}.`, image_url: word.image_url || localWord?.image_url || `https://placehold.co/480x360/fff0e8/243247/png?text=${encodeURIComponent(en)}`, breakdown };
+    const localWord = localTheme?.words.find(item => item.id === word.id || `${row.id}-${item.id}` === word.id);
+    // Supabase is the source of truth. Local content is only a fallback for incomplete rows.
+    const idn = word.indonesian || localWord?.idn || '';
+    const example = word.example || localWord?.example || '';
+    const translation = word.translation || localWord?.translation || '';
+    const breakdown = sanitizeBreakdown(word.breakdown, localWord?.breakdown || []);
+    return { ...localWord, ...word, id: word.id || localWord?.id, en: en || localWord?.en || '', idn, example, translation,
+      definition: word.definition || localWord?.definition || '', definitionId: word.definition_id || localWord?.definitionId || '',
+      image_url: word.image_url || localWord?.image_url || '', breakdown };
   }) };
 }) || [];
+const isUsableWord = word => Boolean(word?.id && word?.en?.trim() && word?.idn?.trim() && word?.definition?.trim() && word?.definitionId?.trim() && word?.example?.trim() && word?.translation?.trim() && Array.isArray(word?.breakdown) && word.breakdown.length);
 const themePath = theme => `/tema/${encodeURIComponent(theme.id)}`;
 const levelWordTotal = level => level.themeIds.reduce((sum, id) => sum + (themes.find(theme => theme.id === id)?.words.length || 0), 0);
+const normalizeQuizAnswer = value => String(value ?? '').trim().toLocaleLowerCase().replace(/\s+/g, ' ').replace(/[.!?]+$/g, '');
 
 const Icon = ({ name, size = 22 }) => {
   const paths = {
@@ -53,6 +65,7 @@ function App() {
   const [, setContentVersion] = useState(0);
   const [page, setPage] = useState('home');
   const [progress, setProgress] = useState(loadProgress);
+  const [guestProgress, setGuestProgress] = useState(EMPTY_PROGRESS);
   const [activeTheme, setActiveTheme] = useState(null);
   const [wordIndex, setWordIndex] = useState(0);
   const [quiz, setQuiz] = useState(null);
@@ -60,9 +73,17 @@ function App() {
   useEffect(() => {
     const onPop = () => setContentVersion(v => v + 1);
     window.addEventListener('popstate', onPop);
-    fetchVocabulary().then(rows => { const remote = normalizeThemes(rows); if (remote.length) { const remoteById = new Map(remote.map(theme => [theme.id, theme])); themes = localThemes.map(theme => remoteById.get(theme.id) || theme); setContentVersion(v => v + 1); } }).catch(() => {});
+    fetchVocabulary().then(rows => {
+      const remote = normalizeThemes(rows).filter(theme => theme.words.length);
+      if (remote.length) {
+        // Once Supabase responds, every lesson and exercise uses the same database rows.
+        themes = remote;
+        setContentVersion(v => v + 1);
+      }
+    }).catch(error => console.warn('Materi Supabase tidak dapat dimuat; memakai data lokal.', error));
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+  useEffect(() => { getCurrentUser().then(account => { if (account) setUser(account); }).catch(() => {}); }, []);
   const [authOpen, setAuthOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [practiceTheme, setPracticeTheme] = useState(null);
@@ -85,13 +106,15 @@ function App() {
     if (path === '/progres') { setPage(user ? 'progress' : 'home'); return; }
     if (path === '/profil') { setPage('profile'); return; }
     if (path === '/tentang') { setPage('about'); return; }
+    if (path === '/admin') { setPage(user?.access_level === 'admin' ? 'admin' : 'home'); return; }
     setPage('home');
   }, []);
 
   useEffect(() => { if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); }, [progress, user]);
   useEffect(() => user ? localStorage.setItem(USER_KEY, JSON.stringify(user)) : localStorage.removeItem(USER_KEY), [user]);
 
-  const effectiveProgress = user ? progress : EMPTY_PROGRESS;
+  // Guests can see checks and scores during this browser session; only signed-in progress is persisted.
+  const effectiveProgress = user ? progress : guestProgress;
   const stats = useMemo(() => {
     const learned = Object.values(effectiveProgress.learned).reduce((sum, words) => sum + words.length, 0);
     const completed = themes.filter(t => effectiveProgress.learned[t.id]?.length === t.words.length).length;
@@ -111,12 +134,12 @@ function App() {
   }
 
   function markLearned(theme, word) {
-    if (!user) return;
-    setProgress(prev => {
+    const update = prev => {
       const current = prev.learned[theme.id] || [];
       if (current.includes(word.id)) return prev;
       return { ...prev, learned: { ...prev.learned, [theme.id]: [...current, word.id] } };
-    });
+    };
+    (user ? setProgress : setGuestProgress)(update);
   }
 
   function speak(text) {
@@ -128,26 +151,29 @@ function App() {
   }
 
   function startQuiz(theme, type = 'choice') {
-    const questions = theme.words.map((word, index) => {
-      const others = theme.words.filter(w => w.id !== word.id).slice(0, 3);
+    const materialWords = theme.words.filter(isUsableWord);
+    const questions = materialWords.map(word => {
+      const others = materialWords.filter(w => w.id !== word.id && w.en.toLowerCase() !== word.en.toLowerCase()).sort(() => Math.random() - .5).slice(0, 3);
       const options = [word, ...others].sort(() => Math.random() - .5);
       return { word, options, type };
     });
+    if (!questions.length) return;
     setQuiz({ theme, questions, index: 0, correct: 0, answer: '', checked: false });
     setPage('quiz'); window.scrollTo(0, 0);
   }
 
   function finishQuiz(correct) {
     const score = Math.round((correct / quiz.questions.length) * 100);
-    setProgress(prev => ({ ...prev, scores: { ...prev.scores, [quiz.theme.id]: Math.max(score, prev.scores[quiz.theme.id] || 0) } }));
+    const saveScore = prev => ({ ...prev, scores: { ...prev.scores, [quiz.theme.id]: Math.max(score, prev.scores[quiz.theme.id] || 0) } });
+    (user ? setProgress : setGuestProgress)(saveScore);
     setQuiz(q => ({ ...q, finished: true, finalScore: score, correct }));
   }
 
   function answerQuiz(value) {
     if (quiz.checked) return;
     const question = quiz.questions[quiz.index];
-    const expected = question.type === 'sentence' ? question.word.example.toLowerCase() : question.word.en.toLowerCase();
-    const isCorrect = value.trim().toLowerCase() === expected;
+    const expected = question.type === 'sentence' ? question.word.example : question.word.en;
+    const isCorrect = normalizeQuizAnswer(value) === normalizeQuizAnswer(expected);
     setQuiz(q => ({ ...q, answer: value, checked: true, wasCorrect: isCorrect }));
   }
 
@@ -159,7 +185,8 @@ function App() {
 
   const navigate = target => {
     if (target === 'progress' && !user) { setAuthOpen(true); return; }
-    const paths = { home: '/', levels: '/kurikulum', practice: '/latihan', progress: '/progres', profile: '/profil', about: '/tentang' };
+    if (target === 'admin' && user?.access_level !== 'admin') return;
+    const paths = { home: '/', levels: '/kurikulum', practice: '/latihan', progress: '/progres', profile: '/profil', about: '/tentang', admin: '/admin' };
     setPage(target); setActiveTheme(null); window.history.pushState({}, '', paths[target] || '/'); window.scrollTo(0, 0);
   };
 
@@ -183,8 +210,9 @@ function App() {
       {page === 'level' && <LevelThemes level={selectedLevel} progress={effectiveProgress} onOpen={openTheme} onPractice={openPractice} user={user} onBack={()=>navigate('levels')} />}
       {page === 'practice' && <PracticeHub progress={effectiveProgress} onPractice={openPractice} user={user} onOpenLevel={openLevel} />}
       {page === 'progress' && user && <Progress stats={stats} progress={effectiveProgress} onOpen={openTheme} user={user} />}
-      {page === 'profile' && <Profile user={user} onAuth={()=>setAuthOpen(true)} onLogout={()=>{setUser(null);navigate('home')}} />}
+      {page === 'profile' && <Profile user={user} onAuth={()=>setAuthOpen(true)} onAdmin={()=>navigate('admin')} onLogout={async()=>{await signOut();setUser(null);navigate('home')}} />}
       {page === 'about' && <About />}
+      {page === 'admin' && user?.access_level === 'admin' && <AdminVocabulary />}
       {page === 'learn' && activeTheme && <Learn theme={activeTheme} index={wordIndex} progress={effectiveProgress} onBack={() => returnToThemeList(activeTheme)} onSpeak={speak} onSelect={setWordIndex} onNext={() => {
         markLearned(activeTheme, activeTheme.words[wordIndex]);
         if (wordIndex < activeTheme.words.length - 1) setWordIndex(i => i + 1); else setFinishOpen(true);
@@ -201,7 +229,7 @@ function App() {
 function Brand() { return <button className="brand brand-button" onClick={()=>{window.history.pushState({},'', '/'); window.location.reload();}} aria-label="KataKita Beranda"><div className="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 5.5h12.5A5.5 5.5 0 0 1 25 11v15.5H12.5A5.5 5.5 0 0 0 7 32V5.5Z"/><path d="M7 5.5v20.2A5.3 5.3 0 0 1 12.3 21H25"/><path d="M13 11h7M13 15h7"/></svg></div><div><strong>KataKita</strong><small>English is fun!</small></div></button>; }
 
 function Nav({ page, onNavigate, user }) {
-  const items = [['home','home','Beranda'],['levels','grid','Tema'],['practice','check','Latihan'],['progress','chart','Progres'],['profile','user','Profil'],['about','info','Tentang']];
+  const items = [['home','home','Beranda'],['levels','grid','Tema'],['practice','check','Latihan'],['progress','chart','Progres'],['profile','user','Profil'],['about','info','Tentang'], ...(user?.access_level === 'admin' ? [['admin','grid','Admin']] : [])];
   return <div className="nav-list">{items.map(([id, icon, label]) => <button key={id} className={(page === id || (id === 'levels' && ['level','learn'].includes(page))) ? 'active' : ''} onClick={() => onNavigate(id)}><span className="nav-icon"><Icon name={icon}/>{id==='progress'&&!user&&<i>🔒</i>}</span><span>{label}</span></button>)}</div>;
 }
 
@@ -246,9 +274,21 @@ function PracticeHub({progress,onPractice,user}) { return <div className="page f
 
 function Progress({stats,progress,onOpen,user}) { return <div className="page fade-in"><Header eyebrow="PERJALANANMU" title={`Progres ${user.name}`} copy="Setiap kata baru adalah satu langkah maju." user={user}/><section className="progress-banner"><div className="ring" style={{'--pct': `${Math.round(stats.learned/stats.total*100)}%`}}><span>{Math.round(stats.learned/stats.total*100)}%</span></div><div><h2>Hebat, teruskan!</h2><p>Kamu sudah mempelajari <b>{stats.learned} dari {stats.total} kata</b>.</p></div></section><div className="progress-list">{themes.map(t=>{const n=progress.learned[t.id]?.length||0;return <button key={t.id} onClick={()=>onOpen(t)}><span className="list-emoji" style={{background:t.color}}>{t.emoji}</span><div><b>{t.title}</b><small>{n}/{t.words.length} kata · Nilai terbaik {progress.scores[t.id]||0}</small><div className="bar dark"><i style={{width:`${n/t.words.length*100}%`,background:t.accent}}/></div></div><Icon name="arrow"/></button>})}</div></div>; }
 
-function Profile({user,onAuth,onLogout}) { return <div className="page fade-in"><Header eyebrow="AKUN SAYA" title={user?'Profil Belajar':'Masuk ke KataKita'} copy={user?'Kelola identitas dan perjalanan belajarmu.':'Masuk untuk menyimpan progres dan nilai latihan.'} user={user}/><section className="profile-card"><div className="big-avatar">{user?.name?.[0]?.toUpperCase()||'?'}</div><h2>{user?.name||'Belum masuk'}</h2><p>{user?.email||'Mode pengunjung'}</p><div className="notice"><span>{user?'✅':'☁️'}</span><div><b>{user?'Progres belajar aktif':'Latihan mode pengunjung'}</b><p>{user?'Progres dan nilai latihan kini tersimpan di akunmu.':'Latihan tetap gratis tanpa login. Daftar hanya jika ingin menyimpan progres dan nilai.'}</p></div></div>{user?<button className="secondary full" onClick={onLogout}>Keluar dari akun</button>:<button className="primary full" onClick={onAuth}>Masuk atau daftar</button>}</section></div>; }
+function Profile({user,onAuth,onLogout,onAdmin}) { return <div className="page fade-in"><Header eyebrow="AKUN SAYA" title={user?'Profil Belajar':'Masuk ke KataKita'} copy={user?'Kelola identitas dan perjalanan belajarmu.':'Masuk untuk menyimpan progres dan nilai latihan.'} user={user}/><section className="profile-card"><div className="big-avatar">{user?.name?.[0]?.toUpperCase()||'?'}</div><h2>{user?.name||'Belum masuk'}</h2><p>{user?.email||'Mode pengunjung'}</p><div className="notice"><span>{user?'✅':'☁️'}</span><div><b>{user?'Progres belajar aktif':'Latihan mode pengunjung'}</b><p>{user?'Progres dan nilai latihan kini tersimpan di akunmu.':'Latihan tetap gratis tanpa login. Daftar hanya jika ingin menyimpan progres dan nilai.'}</p></div></div>{user?<>{user.access_level==='admin'&&<button className="primary full" onClick={onAdmin}>Kelola kosakata</button>}<button className="secondary full" onClick={onLogout}>Keluar dari akun</button></>:<button className="primary full" onClick={onAuth}>Masuk atau daftar</button>}</section></div>; }
 
-function About() { return <div className="page fade-in"><Header eyebrow="TENTANG KATAKITA" title="Belajar bersama pembuatnya" copy="KataKita adalah ruang belajar kosakata bahasa Inggris yang sederhana, gratis, dan dibuat untuk belajar sedikit demi sedikit."/><section className="about-card"><div className="about-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 5.5h12.5A5.5 5.5 0 0 1 25 11v15.5H12.5A5.5 5.5 0 0 0 7 32V5.5Z"/><path d="M7 5.5v20.2A5.3 5.3 0 0 1 12.3 21H25"/><path d="M13 11h7M13 15h7"/></svg></div><span className="eyebrow">PEMBUAT KATAKITA</span><h2>Profil dan karya pembuat</h2><p>Temukan kode sumber proyek dan kartu nama pembuat aplikasi ini.</p><div className="about-links"><a href="https://github.com/condrodr/KataKita" target="_blank" rel="noreferrer">GitHub proyek KataKita <Icon name="arrow" size={18}/></a><a href="https://dcondro.carrd.co/" target="_blank" rel="noreferrer">Kartu Nama Pembuat <Icon name="arrow" size={18}/></a></div></section></div>; }
+function AdminVocabulary() {
+  const fresh=()=>({id:'',theme_id:themes[0]?.id||'',english:'',indonesian:'',definition:'',definition_id:'',example:'',translation:'',breakdown:[],image_url:'',sort_order:0,published:true});
+  const [themeId,setThemeId]=useState(themes[0]?.id||''); const [form,setForm]=useState(fresh); const [message,setMessage]=useState(''); const [busy,setBusy]=useState(false);
+  const selected=themes.find(t=>t.id===themeId); const edit=word=>setForm({id:word.id,theme_id:themeId,english:word.en,indonesian:word.idn,definition:word.definition,definition_id:word.definitionId,example:word.example,translation:word.translation,breakdown:word.breakdown,image_url:word.image_url||'',sort_order:word.sort_order||0,published:word.published!==false});
+  const change=(key,value)=>setForm(v=>({...v,[key]:value}));
+  const save=async e=>{e.preventDefault();setBusy(true);setMessage('');try{const record={...form,id:form.id.trim()||themeId+'-'+form.english.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''),theme_id:themeId};await saveVocabulary(record);setMessage('Kosakata berhasil disimpan ke Supabase.');setForm({...fresh(),theme_id:themeId});}catch(err){setMessage('Gagal: '+err.message);}finally{setBusy(false);}};
+  const remove=async word=>{if(!window.confirm('Hapus kosakata “'+word.en+'”?'))return;try{await removeVocabulary(word.id);setMessage('Kosakata dihapus.');}catch(err){setMessage('Gagal: '+err.message);}};
+      const breakdownText=form.breakdown.map(pair=>pair.join(' = ')).join('\n');
+
+  return <div className="page fade-in"><Header eyebrow="PANEL ADMIN" title="Kelola Kosakata" copy="Tambah dan perbarui materi. Perubahan disimpan langsung ke Supabase."/><div className="admin-layout"><section className="admin-list"><label>Tema<select value={themeId} onChange={e=>{setThemeId(e.target.value);setForm({...fresh(),theme_id:e.target.value})}}>{themes.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select></label><div className="admin-words">{selected?.words.map(w=><div key={w.id}><button onClick={()=>edit(w)}><b>{w.en}</b><small>{w.idn}</small></button><button className="danger-button" onClick={()=>remove(w)}>Hapus</button></div>)}</div></section><form className="admin-form" onSubmit={save}><h2>{form.id?'Ubah kosakata':'Tambah kosakata'}</h2><div className="form-grid"><label>ID<input value={form.id} onChange={e=>change('id',e.target.value)} placeholder="Otomatis jika kosong"/></label><label>Urutan<input type="number" value={form.sort_order} onChange={e=>change('sort_order',Number(e.target.value))}/></label><label>Kosakata Inggris<input required value={form.english} onChange={e=>change('english',e.target.value)}/></label><label>Arti Indonesia<input required value={form.indonesian} onChange={e=>change('indonesian',e.target.value)}/></label><label className="wide">Definition (English)<textarea required value={form.definition} onChange={e=>change('definition',e.target.value)}/></label><label className="wide">Definisi Indonesia<textarea required value={form.definition_id} onChange={e=>change('definition_id',e.target.value)}/></label><label className="wide">Contoh kalimat Inggris<textarea required value={form.example} onChange={e=>change('example',e.target.value)}/></label><label className="wide">Arti keseluruhan Indonesia<textarea required value={form.translation} onChange={e=>change('translation',e.target.value)}/></label><label className="wide">Arti per kata<textarea required rows="6" value={breakdownText} onChange={e=>change('breakdown',e.targemap.value.split('\n').filter(Boolean).map(line=>{const [en,...id]=line.split('=');return [en?.trim(),id.join('=').trim()]}).filter(p=>p[0]&&p[1]))} placeholder={"Good = Selamat\nmorning = pagi"}/><small>Satu pasangan per baris: English = Indonesia. Frasa boleh dijadikan satu.</small></label><label className="wide">URL gambar<input value={form.image_url} onChange={e=>change('image_url',e.target.value)}/></label><label className="check-field"><input type="checkbox" checked={form.published} onChange={e=>change('published',e.target.checked)}/> Tampilkan ke pengguna</label></div>{message&&<div className="admin-message">{message}</div>}<div className="admin-actions"><button type="button" className="secondary" onClick={()=>setForm({...fresh(),theme_id:themeId})}>Kosongkan</button><button className="primary" disabled={busy}>{busy?'Menyimpan...':'Simpan ke Supabase'}</button></div></form></div></div>;
+}
+
+function About() { return <div className="page fade-in"><Header eyebrow="TENTANG KATAKITA" title="Kosakata baru, langkah baru" copy="KataKita adalah media pembelajaran kosakata bahasa Inggris yang sederhana, gratis, dan mudah digunakan."/><section className="about-card"><div className="about-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 5.5h12.5A5.5 5.5 0 0 1 25 11v15.5H12.5A5.5 5.5 0 0 0 7 32V5.5Z"/><path d="M7 5.5v20.2A5.3 5.3 0 0 1 12.3 21H25"/><path d="M13 11h7M13 15h7"/></svg></div><span className="eyebrow">CERITA KATAKITA</span><h2>Belajar kosakata Bahasa Inggeis dengan cara yang menyenangkan</h2><p>KataKita dibuat untuk membantu siapa pun mempelajari dan memahami kosakata baru dalam bahasa Inggris. Ide ini berawal dari keinginan pembuat untuk mendampingi keponakannya belajar mengenal kata-kata bahasa Inggris dengan cara yang lebih menarik, terarah, dan mudah dipahami.</p><p>Materi disusun ke dalam berbagai tema agar proses belajar terasa lebih dekat dengan kehidupan sehari-hari. Koleksi kosakata di KataKita juga akan terus diperbarui dan dikembangkan supaya semakin lengkap serta bermanfaat bagi para pembelajar begitu juga dengan macam jenis latihannya.</p><div className="about-links"><a href="https://github.com/condrodr/KataKita" target="_blank" rel="noreferrer">GitHub proyek KataKita <Icon name="arrow" size={18}/></a><a href="https://dcondro.carrd.co/" target="_blank" rel="noreferrer">Kartu Nama Pembuat <Icon name="arrow" size={18}/></a></div></section></div>; }
 
 function Learn({theme,index,progress,onBack,onSpeak,onNext,onSelect}) {
   const word=theme.words[index]; const learned=progress.learned[theme.id]?.includes(word.id);
@@ -259,11 +299,10 @@ function Learn({theme,index,progress,onBack,onSpeak,onNext,onSelect}) {
 }
 
 function AuthModal({onClose,onSuccess}) {
-  const [mode,setMode]=useState('login'); const [name,setName]=useState(''); const [email,setEmail]=useState(''); const [password,setPassword]=useState('');
-  const submit=e=>{e.preventDefault();onSuccess({name:mode==='register'?(name.trim()||'Teman'):email.split('@')[0]||'Teman',email});};
-  return <div className="modal-backdrop"><section className="modal-card fade-in"><button className="modal-close" onClick={onClose}>×</button><span className="modal-emoji">🌟</span><span className="eyebrow">{mode==='login'?'SELAMAT DATANG KEMBALI':'MULAI GRATIS'}</span><h2>{mode==='login'?'Masuk ke KataKita':'Buat akun belajar'}</h2><p>{mode==='login'?'Lanjutkan progres dan kerjakan latihanmu.':'Simpan progres dan buka latihan setelah setiap tema.'}</p><div className="auth-tabs"><button className={mode==='login'?'active':''} onClick={()=>setMode('login')}>Masuk</button><button className={mode==='register'?'active':''} onClick={()=>setMode('register')}>Daftar</button></div><form onSubmit={submit}>{mode==='register'&&<label>Nama<input required value={name} onChange={e=>setName(e.target.value)} placeholder="Nama kamu"/></label>}<label>Email<input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="nama@email.com"/></label><label>Kata sandi<input required minLength="6" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Minimal 6 karakter"/></label>{mode==='register'&&<div className="email-note">✉️ Tautan verifikasi akan dikirim ke email ini. Akun aktif setelah tautan dibuka.</div>}<button className="primary full" type="submit">{mode==='login'?'Masuk':'Daftar gratis'}</button></form><small className="prototype-note">Demo lokal belum mengirim email. Verifikasi aktif saat Supabase Auth dihubungkan.</small></section></div>;
+  const [mode,setMode]=useState('login'); const [name,setName]=useState(''); const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [error,setError]=useState(''); const [busy,setBusy]=useState(false); const [notice,setNotice]=useState('');
+  const submit=async e=>{e.preventDefault();setBusy(true);setError('');setNotice('');try{const account=mode==='register'?await signUp(name.trim()||'Teman',email,password):await signIn(email,password);if(account?.pendingVerification)setNotice('Tautan verifikasi sudah dikirim. Periksa email, lalu masuk.');else onSuccess(account);}catch(err){setError(err.message||'Autentikasi gagal.');}finally{setBusy(false);}};
+  return <div className="modal-backdrop"><section className="modal-card fade-in"><button className="modal-close" onClick={onClose}>×</button><span className="modal-emoji">🌟</span><span className="eyebrow">{mode==='login'?'SELAMAT DATANG KEMBALI':'MULAI GRATIS'}</span><h2>{mode==='login'?'Masuk ke KataKita':'Buat akun belajar'}</h2><p>{mode==='login'?'Lanjutkan progres dan akses panel sesuai peran akun.':'Simpan progres belajar menggunakan akun Supabase.'}</p><div className="auth-tabs"><button className={mode==='login'?'active':''} onClick={()=>setMode('login')}>Masuk</button><button className={mode==='register'?'active':''} onClick={()=>setMode('register')}>Daftar</button></div><form onSubmit={submit}>{mode==='register'&&<label>Nama<input required value={name} onChange={e=>setName(e.target.value)}/></label>}<label>Email<input required type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Kata sandi<input required minLength="6" type="password" value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<div className="form-error">{error}</div>}{notice&&<div className="email-note">{notice}</div>}<button className="primary full" disabled={busy}>{busy?'Memproses...':mode==='login'?'Masuk':'Daftar gratis'}</button></form></section></div>;
 }
-
 function TypeButtons({onStart}) { return <div className="quiz-type-grid"><button onClick={()=>onStart('choice')}><span>🖼️</span><b>Pilihan Ganda</b><small>Pilih jawaban yang tepat</small></button><button onClick={()=>onStart('letters')}><span>🔤</span><b>Susun Huruf</b><small>Drag huruf ke jawaban</small></button><button onClick={()=>onStart('listening')}><span>🔊</span><b>Listening</b><small>Dengarkan lalu pilih gambar</small></button><button onClick={()=>onStart('sentence')}><span>🧩</span><b>Susun Kalimat</b><small>Latihan lanjutan gratis</small></button></div>; }
 
 function FinishModal({user,theme,onClose,onAuth,onQuiz}) { return <div className="modal-backdrop"><section className="modal-card finish-modal fade-in"><button className="modal-close" onClick={onClose}>×</button><span className="modal-emoji">🎉</span><span className="eyebrow">MATERI SELESAI</span><h2>Kamu sudah mempelajari {theme.words.length} kata!</h2><p>{user?`Pilih jenis latihan untuk tema ${theme.title}.`:'Latihan tetap bisa dilanjutkan tanpa login, tetapi progres belajar dan nilai tidak akan tersimpan.'}</p><TypeButtons onStart={onQuiz}/><button className="secondary full" onClick={onClose}>Kembali ke tema</button>{!user&&<button className="text-button full" onClick={onAuth}>Masuk untuk menyimpan progres</button>}</section></div>; }
@@ -279,7 +318,7 @@ function Quiz({quiz,onAnswer,onNext,onSpeak,onDone}) {
 
 function ListeningQuestion({question,disabled,onSpeak,onAnswer}) { return <div className="listening-question"><button className="listen-big" onClick={()=>onSpeak(question.word.en)}><Icon name="volume" size={26}/> Putar suara bahasa Inggris</button><p>Manakah kata yang kamu dengar?</p><div className="listen-options">{question.options.map(o=><button key={o.id} disabled={disabled} onClick={()=>onAnswer(o.en)}><span>{o.emoji}</span><b>{o.en}</b></button>)}</div></div>; }
 
-function SentenceQuestion({word,disabled,onAnswer}) { const make=()=>word.example.replace(/[.?!]/g,'').split(' ').map((text,i)=>({id:`${text}-${i}`,text})).sort(()=>Math.random()-.5); const [bank,setBank]=useState(make); const [answer,setAnswer]=useState([]); useEffect(()=>{setBank(make());setAnswer([])},[word.id]); const toAnswer=id=>{if(disabled)return;const x=bank.find(t=>t.id===id);if(x){setBank(v=>v.filter(t=>t.id!==id));setAnswer(v=>[...v,x])}};const toBank=id=>{if(disabled)return;const x=answer.find(t=>t.id===id);if(x){setAnswer(v=>v.filter(t=>t.id!==id));setBank(v=>[...v,x])}};const dragStart=(event,id,from)=>{event.dataTransfer.setData('text/plain',JSON.stringify({id,from}))};const dropWord=event=>{event.preventDefault();if(disabled)return;try{const {id,from}=JSON.parse(event.dataTransfer.getData('text/plain'));from==='bank'?toAnswer(id):toBank(id)}catch{}};return <div className="sentence-question"><div className="sentence-prompt">{word.translation}</div><p>Susun kata-kata ini menjadi kalimat bahasa Inggris. Seret kata atau ketuk untuk memindahkannya.</p><div className="answer-drop sentence-drop" onDragOver={e=>e.preventDefault()} onDrop={dropWord}>{answer.length?answer.map(t=><button draggable={!disabled} onDragStart={e=>dragStart(e,t.id,'answer')} key={t.id} onClick={()=>toBank(t.id)}>{t.text}</button>):<span>Taruh kata di sini</span>}</div><div className="letter-hint">{bank.map(t=><button draggable={!disabled} onDragStart={e=>dragStart(e,t.id,'bank')} key={t.id} onClick={()=>toAnswer(t.id)}>{t.text}</button>)}</div><button className="primary" disabled={answer.length!==word.example.replace(/[.?!]/g,'').split(' ').length||disabled} onClick={()=>onAnswer(`${answer.map(t=>t.text).join(' ')}.`)}>Periksa jawaban</button></div>; }
+function SentenceQuestion({word,disabled,onAnswer}) { const punctuation = word.example.match(/[.!?]$/)?.[0] || '.'; const make=()=>word.example.replace(/[.!?]$/,'').split(/\s+/).map((text,i)=>({id:`${i}-${text}`,text})).sort(()=>Math.random()-.5); const [bank,setBank]=useState(make); const [answer,setAnswer]=useState([]); useEffect(()=>{setBank(make());setAnswer([])},[word.id]); const toAnswer=id=>{if(disabled)return;const x=bank.find(t=>t.id===id);if(x){setBank(v=>v.filter(t=>t.id!==id));setAnswer(v=>[...v,x])}};const toBank=id=>{if(disabled)return;const x=answer.find(t=>t.id===id);if(x){setAnswer(v=>v.filter(t=>t.id!==id));setBank(v=>[...v,x])}};const dragStart=(event,id,from)=>{event.dataTransfer.setData('text/plain',JSON.stringify({id,from}))};const dropWord=event=>{event.preventDefault();if(disabled)return;try{const {id,from}=JSON.parse(event.dataTransfer.getData('text/plain'));from==='bank'?toAnswer(id):toBank(id)}catch{}};const candidate=answer.map(t=>t.text).join(' ')+punctuation;return <div className="sentence-question"><div className="sentence-prompt">{word.translation}</div><p>Susun kata-kata ini menjadi kalimat bahasa Inggris. Seret kata atau ketuk untuk memindahkannya.</p><div className="answer-drop sentence-drop" onDragOver={e=>e.preventDefault()} onDrop={dropWord}>{answer.length?answer.map(t=><button draggable={!disabled} onDragStart={e=>dragStart(e,t.id,'answer')} key={t.id} onClick={()=>toBank(t.id)}>{t.text}</button>):<span>Taruh kata di sini</span>}</div><div className="letter-hint">{bank.map(t=><button draggable={!disabled} onDragStart={e=>dragStart(e,t.id,'bank')} key={t.id} onClick={()=>toAnswer(t.id)}>{t.text}</button>)}</div><button className="primary" disabled={answer.length!==word.example.replace(/[.!?]$/,'').split(/\s+/).length||disabled} onClick={()=>onAnswer(candidate)}>Periksa jawaban</button></div>; }
 
 function LetterQuestion({word,disabled,onAnswer}) {
   const makeTiles=()=>word.toUpperCase().split('').map((letter,i)=>({id:`${letter}-${i}`,letter})).sort(()=>Math.random()-.5);
@@ -288,7 +327,7 @@ function LetterQuestion({word,disabled,onAnswer}) {
   const moveToAnswer=id=>{if(disabled)return;const tile=bank.find(t=>t.id===id);if(tile){setBank(x=>x.filter(t=>t.id!==id));setAnswer(x=>[...x,tile])}};
   const moveToBank=id=>{if(disabled)return;const tile=answer.find(t=>t.id===id);if(tile){setAnswer(x=>x.filter(t=>t.id!==id));setBank(x=>[...x,tile])}};
   const drop=(e,target)=>{e.preventDefault();const id=e.dataTransfer.getData('text/plain');target==='answer'?moveToAnswer(id):moveToBank(id)};
-  return <div className="letter-box"><p className="drag-help">Drag huruf ke kotak jawaban atau ketuk satu per satu.</p><div className="answer-drop" onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,'answer')}>{answer.length?answer.map(t=><button draggable={!disabled} onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} onClick={()=>moveToBank(t.id)} key={t.id}>{t.letter}</button>):<span>Taruh huruf di sini</span>}</div><div className="letter-hint" onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,'bank')}>{bank.map(t=><button draggable={!disabled} onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} onClick={()=>moveToAnswer(t.id)} key={t.id}>{t.letter}</button>)}</div><button className="primary" disabled={answer.length!==word.length||disabled} onClick={()=>onAnswer(answer.map(t=>t.letter).join(''))}>Periksa jawaban</button></div>;
+  return <div className="letter-box"><p className="drag-help">Susun semua huruf, termasuk spasi antarkata. Seret atau ketuk hurufnya.</p><div className="answer-drop" onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,'answer')}>{answer.length?answer.map(t=><button aria-label={t.letter===' '?'Spasi':t.letter} draggable={!disabled} onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} onClick={()=>moveToBank(t.id)} key={t.id}>{t.letter===' '?'␣':t.letter}</button>):<span>Taruh huruf di sini</span>}</div><div className="letter-hint" onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,'bank')}>{bank.map(t=><button aria-label={t.letter===' '?'Spasi':t.letter} draggable={!disabled} onDragStart={e=>e.dataTransfer.setData('text/plain',t.id)} onClick={()=>moveToAnswer(t.id)} key={t.id}>{t.letter===' '?'␣':t.letter}</button>)}</div><button className="primary" disabled={answer.length!==word.length||disabled} onClick={()=>onAnswer(answer.map(t=>t.letter).join(''))}>Periksa jawaban</button></div>;
 }
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><App/></React.StrictMode>);
