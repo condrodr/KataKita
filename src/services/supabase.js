@@ -76,3 +76,50 @@ export async function removeVocabulary(id) {
   const { error } = await supabase.from('vocabulary').delete().eq('id', id);
   if (error) throw error;
 }
+
+const cleanMetadataText = value => String(value || '')
+  .replace(/<[^>]*>/g, ' ')
+  .replace(/&nbsp;/gi, ' ')
+  .replace(/&amp;/gi, '&')
+  .replace(/&quot;/gi, '"')
+  .replace(/&#39;/g, "'")
+  .replace(/\s+/g, ' ')
+  .trim();
+
+export async function searchWikimediaImages(query) {
+  const keyword = String(query || '').trim();
+  if (!keyword) return [];
+
+  const params = new URLSearchParams({
+    action: 'query',
+    generator: 'search',
+    gsrsearch: keyword,
+    gsrnamespace: '6',
+    gsrlimit: '12',
+    prop: 'imageinfo',
+    iiprop: 'url|mime|extmetadata',
+    iiurlwidth: '720',
+    format: 'json',
+    origin: '*',
+  });
+  const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`);
+  if (!response.ok) throw new Error('Pencarian Wikimedia tidak dapat dihubungi.');
+  const payload = await response.json();
+
+  return Object.values(payload.query?.pages || {})
+    .map(page => {
+      const info = page.imageinfo?.[0];
+      const meta = info?.extmetadata || {};
+      return {
+        id: String(page.pageid),
+        title: String(page.title || '').replace(/^File:/, ''),
+        url: info?.thumburl || info?.url || '',
+        pageUrl: info?.descriptionurl || '',
+        author: cleanMetadataText(meta.Artist?.value || meta.Credit?.value || 'Kontributor Wikimedia Commons'),
+        license: cleanMetadataText(meta.LicenseShortName?.value || meta.UsageTerms?.value || 'Lihat halaman sumber'),
+        alt: cleanMetadataText(meta.ImageDescription?.value || page.title || keyword),
+        mime: info?.mime || '',
+      };
+    })
+    .filter(image => image.url && image.mime.startsWith('image/'));
+}

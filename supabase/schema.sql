@@ -34,6 +34,11 @@ create table public.vocabulary (
   translation text not null,
   breakdown jsonb not null default '[]'::jsonb,
   image_url text,
+  image_provider text,
+  image_page_url text,
+  image_author text,
+  image_license text,
+  image_alt text,
   audio_url text,
   sort_order integer not null default 0,
   published boolean not null default true
