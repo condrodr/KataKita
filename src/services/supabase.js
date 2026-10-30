@@ -45,7 +45,7 @@ export async function signUp(name, email, password) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { name } },
+    options: { data: { name }, emailRedirectTo: `${window.location.origin}/` },
   });
   if (error) throw error;
   if (!data.session) return { pendingVerification: true };
